@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <!--artefacto-->
 <title>Lycanópolis</title>
-<meta name="description" content="El monopolio de El bucle de lycan para aprender algoritmos jugando: 20 retos de programación que se juegan sin saber programar. Gratis en el navegador, en un mismo equipo o en línea.">
+<meta name="description" content="El juego de mesa de El bucle de lycan para aprender algoritmos jugando: 20 retos de programación que se juegan sin saber programar. Gratis en el navegador, en un mismo equipo o en línea.">
 <meta property="og:title" content="Lycanópolis · El bucle de lycan">
-<meta property="og:description" content="Un monopolio para aprender algoritmos jugando, con 20 retos de programación que se juegan sin saber programar.">
+<meta property="og:description" content="El juego que enseña algoritmos: un juego de mesa en el navegador, con 20 retos de programación que se juegan sin saber programar.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://lycanopolis.canred.pro/">
 <meta property="og:image" content="https://lycanopolis.canred.pro/portada.jpg">
@@ -561,7 +561,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--cyan-500);outli
 <script>
 'use strict';
 // =====================================================================
-// Lycanópolis: el monopolio de El bucle de lycan.
+// Lycanópolis: el juego de mesa de El bucle de lycan, el juego que enseña.
 // Se elige un curso antes de empezar: casillas de color = sus episodios (un color, un módulo);
 // estaciones = los otros cuatro cursos; servicios = Papel y lápiz y Python; cárcel = el bucle infinito.
 // Lo que se aprende va en las cartas: la idea equivocada de lycan y por qué falla, y las preguntas de la pausa activa.
@@ -3045,7 +3045,7 @@ function htmlTitulo(i){
 function htmlReglas(){
   return `<div class="ventana reglas" role="dialog" aria-modal="true" aria-labelledby="reglas-t">
     <h2 id="reglas-t">Cómo se juega</h2>
-    <p>Un monopolio para aprender: el tablero es ${TEMAS_ABIERTOS.length === 1 ? `el curso de ${CURSOS[TEMAS_ABIERTOS[0]].n}` : 'uno de los cursos del canal'} y las cartas son lo que se enseña en sus episodios. Cada jugador empieza con ${money(1500)} y gana quien deja a los demás sin dinero.</p>
+    <p>Un juego de mesa para aprender: el tablero es ${TEMAS_ABIERTOS.length === 1 ? `el curso de ${CURSOS[TEMAS_ABIERTOS[0]].n}` : 'uno de los cursos del canal'} y las cartas son lo que se enseña en sus episodios. Cada jugador empieza con ${money(1500)} y gana quien deja a los demás sin dinero.</p>
     <h3>// lo que se aprende</h3>
     <ul>
       <li><b>Pausa activa:</b> una pregunta de un episodio con tres respuestas. Si aciertas, cobras ${money(100)}; aciertes o no, la carta explica por qué.</li>

@@ -1,6 +1,6 @@
 # Lycanópolis
 
-El monopolio del canal para aprender algoritmos jugando: las casillas son los episodios del curso de Introducción a los Algoritmos, y cada uno tiene un reto de programación que se juega sin saber programar.
+El juego que enseña: un juego de mesa del canal para aprender algoritmos jugando. Las casillas son los episodios del curso de Introducción a los Algoritmos, y cada uno tiene un reto de programación que se juega sin saber programar.
 
 **Juega aquí: https://lycanopolis.canred.pro/**
 
