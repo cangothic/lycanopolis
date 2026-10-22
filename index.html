@@ -14,6 +14,22 @@
 <meta property="og:image:width" content="1280">
 <meta property="og:image:height" content="720">
 <meta name="twitter:card" content="summary_large_image">
+<script>
+// Google Analytics, solo en el sitio publicado: en local y en el artefacto gtag no manda nada.
+// Sin señales de anuncios; en Europa, sin cookies (no hay aviso de cookies que pida permiso).
+window.dataLayer = window.dataLayer || [];
+function gtag(){ dataLayer.push(arguments); }
+if (location.hostname === 'lycanopolis.canred.pro'){
+  gtag('consent', 'default', {ad_storage:'denied', ad_user_data:'denied', ad_personalization:'denied'});
+  gtag('consent', 'default', {analytics_storage:'denied', region:['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE','IS','LI','NO','GB','CH']});
+  gtag('js', new Date());
+  gtag('config', 'G-NNNXZR0GFE');
+  const ga = document.createElement('script');
+  ga.async = true;
+  ga.src = 'https://www.googletagmanager.com/gtag/js?id=G-NNNXZR0GFE';
+  document.head.appendChild(ga);
+}
+</script>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -302,6 +318,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--cyan-500);outli
 .link{border:0;background:none;padding:6px 0;cursor:pointer;color:var(--ink-200);font-size:13.5px;text-decoration:underline;text-decoration-color:var(--ink-500);text-underline-offset:3px}
 .link:hover{color:var(--cyan-400)}
 .link.peligro:hover{color:var(--magenta-400)}
+.canal{display:inline-flex;align-items:center;gap:6px;margin-left:auto;color:var(--cyan-400);text-decoration-color:var(--cyan-700)}
+.canal svg{width:15px;height:15px;flex:0 0 auto}
+.ventana .canal{margin-left:0;font-size:inherit;padding:0}
 
 /* preparación */
 .asientos{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:8px}
@@ -1124,6 +1143,7 @@ function nuevaPartida(cfg){
     bote:0, opc:{modo:cfg.modo, bote:cfg.bote, retos:cfg.retos !== false}, bitacora:[], msg:'', ronda:1, ranking:null, propuestas:{},
   };
   anotar(`Empieza la partida: ${G.jugadores.length} jugadores con ${money(1500)} cada uno.`);
+  medir('empezar_partida', {modo:G.opc.modo, jugadores:G.jugadores.length, bots:G.jugadores.filter(j => j.bot).length, en_linea:enLinea() ? 'si' : 'no', retos:G.opc.retos ? 'si' : 'no'});
   anotar(`Turno de ${cur().nombre}.`);
   UI.vista = 'juego'; UI.ventana = null; UI.ver = null; UI.plata = {}; UI.reto = null;
   const capa = $('#fichas'); if (capa) capa.innerHTML = '';
@@ -1443,6 +1463,7 @@ function terminar(){
   const w = G.jugadores[G.ranking[0].i];
   anotar(`Fin de la partida. Gana ${w.nombre}, con ${money(G.ranking[0].v)} de patrimonio.`);
   UI.ventana = {t:'final'};
+  medir('terminar_partida', {modo:G.opc.modo, rondas:G.ronda, gana:w.bot ? 'bot' : 'persona'});
 }
 
 // ---------- ejercicios, hipotecas y negocios ----------
@@ -2301,6 +2322,7 @@ function jugarReto(r, v){
   if (res){
     R.fin = {gano:res === 'gana'};
     suena(R.fin.gano ? 'festejo' : 'fallo');
+    medir('jugar_reto', {reto:R.def.tipo, episodio:G.reto.ep, resultado:R.fin.gano ? 'gana' : 'pierde'});
     retoSonado = true;
   } else suena('toque');
   pintarVentana(true);
@@ -2529,6 +2551,14 @@ const ICONO_EFECTOS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 
 const htmlSonido = () => `<span class="sonido">
   <button type="button" class="mini" data-a="musica" aria-pressed="${SONIDO.musica}" aria-label="Música" title="${SONIDO.musica ? 'Apagar la música' : 'Poner la música'}">${ICONO_MUSICA}</button>
   <button type="button" class="mini" data-a="efectos" aria-pressed="${SONIDO.efectos}" aria-label="Efectos de sonido" title="${SONIDO.efectos ? 'Apagar los efectos' : 'Poner los efectos'}">${ICONO_EFECTOS}</button></span>`;
+
+// ---------- el canal y Analytics ----------
+const CANAL = 'https://www.youtube.com/@bucledelycan';
+const htmlCanal = (texto = 'El bucle de lycan en YouTube') => `<a class="link canal" href="${CANAL}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="4" fill="currentColor"/><path d="M10 9l5 3-5 3z" fill="var(--ink-950)"/></svg>${texto}</a>`;
+// Eventos de la partida para Google Analytics (los clics al canal los cuenta solo, como clics de salida).
+function medir(evento, datos = {}){
+  try { if (typeof gtag === 'function') gtag('event', evento, datos); } catch (e){}
+}
 
 // ---------- en línea (PeerJS) ----------
 // El anfitrión crea la sala y mueve la partida como siempre; cada invitado se conecta directo a su navegador
@@ -2871,7 +2901,7 @@ function htmlInvitacion(){
       <p class="modo-desc">Te invitaron a una partida. Escribe tu nombre y entra: cada quien juega su turno desde su equipo.</p>
       <div class="unirse"><input id="sala-nombre" value="${esc(UI.unirse.nombre)}" maxlength="14" placeholder="Tu nombre" aria-label="Tu nombre" autocomplete="off"><button type="button" class="btn sm" data-a="unirse">Entrar</button></div>
       ${RED.msg ? `<p class="aviso-red">${esc(RED.msg)}</p>` : ''}</section>
-    <footer class="pie"><button type="button" class="link" data-a="reglas">Cómo se juega</button><button type="button" class="link" data-a="sinSala">Jugar sin sala</button></footer>`;
+    <footer class="pie"><button type="button" class="link" data-a="reglas">Cómo se juega</button><button type="button" class="link" data-a="sinSala">Jugar sin sala</button>${htmlCanal()}</footer>`;
 }
 
 // Lo que ve un invitado antes de que empiece la partida.
@@ -2883,7 +2913,7 @@ function htmlSalaInvitado(){
     <section><h3>// tema</h3><p class="vacio">${CURSOS[s.tema].n}${s.tema === 'algoritmos' && s.retos !== false ? ', con retos de programación' : ''} · partida ${s.modo === 'clasica' ? 'clásica' : 'corta'}</p></section>
     <p class="modo-desc">Esperando a que el anfitrión empiece la partida…</p>` : ''}
     ${RED.msg ? `<p class="aviso-red">${esc(RED.msg)}</p>` : ''}
-    <footer class="pie"><button type="button" class="link" data-a="reglas">Cómo se juega</button><button type="button" class="link" data-a="salirSala">Salir de la sala</button></footer>`;
+    <footer class="pie"><button type="button" class="link" data-a="reglas">Cómo se juega</button><button type="button" class="link" data-a="salirSala">Salir de la sala</button>${htmlCanal()}</footer>`;
 }
 
 // ---------- guardar ----------
@@ -3105,7 +3135,7 @@ function htmlSetup(){
       <label class="chk"><input type="checkbox" id="bote" ${s.bote ? 'checked' : ''}><span>Bote en el recreo: los impuestos y las multas se juntan ahí y se los lleva quien caiga.</span></label>
     </section>
     <div class="cta"><button type="button" class="btn go" data-a="empezar">Empezar partida</button>${enCurso ? '<button type="button" class="btn ghost" data-a="volver">Volver a la partida</button>' : ''}</div>
-    <footer class="pie"><button type="button" class="link" data-a="reglas">Cómo se juega</button></footer>`;
+    <footer class="pie"><button type="button" class="link" data-a="reglas">Cómo se juega</button>${htmlCanal()}</footer>`;
 }
 
 function htmlCasillasDe(pi){
@@ -3167,7 +3197,7 @@ function htmlJuego(){
     <section><h3>// jugadores</h3><ol class="jug">${filas}</ol></section>
     <section><h3>${esc(titulo)}</h3>${htmlCasillasDe(ver)}${negociar ? '<div style="margin-top:12px"><button type="button" class="btn ghost sm" data-a="negociar">Negociar con otro jugador</button></div>' : ''}</section>
     <section><h3>// bitácora</h3><ol class="log">${log}</ol></section>
-    <footer class="pie"><button type="button" class="link" data-a="reglas">Cómo se juega</button>${soyInvitado() ? '<button type="button" class="link" data-a="salirSala">Salir de la sala</button>' : '<button type="button" class="link" data-a="nueva">Nueva partida</button>'}${G.fase === 'final' ? '<button type="button" class="link" data-a="verFinal">Resultados</button>' : soyInvitado() ? '' : '<button type="button" class="link peligro" data-a="terminarYa">Terminar ahora</button>'}</footer>`;
+    <footer class="pie"><button type="button" class="link" data-a="reglas">Cómo se juega</button>${soyInvitado() ? '<button type="button" class="link" data-a="salirSala">Salir de la sala</button>' : '<button type="button" class="link" data-a="nueva">Nueva partida</button>'}${G.fase === 'final' ? '<button type="button" class="link" data-a="verFinal">Resultados</button>' : soyInvitado() ? '' : '<button type="button" class="link peligro" data-a="terminarYa">Terminar ahora</button>'}${htmlCanal()}</footer>`;
 }
 
 function pintarPanel(){
@@ -3286,6 +3316,8 @@ function htmlReglas(){
     <p>En tu turno puedes cambiar casillas, dinero y cartas break con otro jugador. Los bots aceptan si el trato les conviene.</p>
     <h3>// modos</h3>
     <p><b>Clásica:</b> se juega hasta que queda uno. <b>Corta:</b> termina con la primera quiebra y gana quien tenga más patrimonio (dinero, casillas y ejercicios).</p>
+    <h3>// el curso</h3>
+    <p>Los retos, las preguntas y las ideas de lycan salen de los episodios del curso, en el canal ${htmlCanal('El bucle de lycan')}.</p>
     <div class="cerrar-fila"><button type="button" class="btn go sm" data-a="cerrar">Entendido</button></div></div>`;
 }
 
@@ -3340,6 +3372,7 @@ function htmlFinal(){
     <div class="gana">${fichaMini(w)}<div><p class="nota" style="margin:0">// fin de la partida</p><h2 id="final-t" style="margin:0">Gana ${esc(w.nombre)}</h2></div></div>
     <p>Patrimonio: dinero, casillas (las hipotecadas a la mitad) y ejercicios.</p>
     <ol class="rank">${filas}</ol>
+    <p>¿Quieres saber por qué funcionan los retos? Cada uno es un episodio del curso: ${htmlCanal('míralos en El bucle de lycan')}.</p>
     <div class="cerrar-fila"><button type="button" class="btn ghost sm" data-a="cerrar">Ver el tablero</button>${soyInvitado() ? '' : '<button type="button" class="btn go sm" data-a="nueva">Nueva partida</button>'}</div></div>`;
 }
 
@@ -3435,7 +3468,7 @@ const ACCIONES = {
   proponer:() => proponer(),
   aceptar:() => G.tratoPendiente && esMio(G.tratoPendiente.para) && accion(() => responderTrato(true)),
   rechazar:() => G.tratoPendiente && esMio(G.tratoPendiente.para) && accion(() => responderTrato(false)),
-  reglas:() => { UI.ventana = {t:'reglas'}; pintarVentana(); },
+  reglas:() => { UI.ventana = {t:'reglas'}; pintarVentana(); medir('ver_reglas'); },
   cerrar:() => { UI.ventana = null; pintarVentana(); },
   verFinal:() => { UI.ventana = {t:'final'}; pintarVentana(); },
   jugarReto:() => accion(empezarReto),
@@ -3487,8 +3520,8 @@ const ACCIONES = {
     UI.setup.jugadores.splice(k, 1);
     pintarPanel();
   },
-  crearSala:() => !enLinea() && crearSala(),
-  unirse:() => !enLinea() && unirse(),
+  crearSala:() => { if (!enLinea()){ medir('crear_sala'); crearSala(); } },
+  unirse:() => { if (!enLinea()){ medir('unirse_sala'); unirse(); } },
   salirSala:() => { UI.invitacion = null; salirDeSala(); },
   sinSala:() => {
     UI.invitacion = null;
