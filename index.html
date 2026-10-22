@@ -380,6 +380,18 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--cyan-500);outli
 .enlace{display:flex;gap:8px;align-items:center;margin-top:10px;min-width:0}
 .enlace code{flex:1;min-width:0;overflow-x:auto;white-space:nowrap;padding:7px 10px;border-radius:6px;background:var(--ink-950);border:1px solid var(--ink-600);font-family:var(--font-mono);font-size:12px;color:var(--ink-200)}
 .aviso-red{margin:10px 0 0;font-size:14px;color:var(--magenta-400)}
+/* voz: debajo de la lista de jugadores; quien habla brilla con su color */
+.voz{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:12px}
+.voz .btn svg{width:16px;height:16px;margin:-3px 7px -3px -2px}
+.voz .btn.abierto{border-color:var(--green-500);background:rgba(60,240,165,.1);box-shadow:0 0 16px -6px var(--green-500)}
+.voz-n{font-size:12.5px;color:var(--ink-300)}
+.voz .aviso-red{flex-basis:100%;margin:0}
+.vz{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;color:var(--ink-200);vertical-align:middle}
+.vz svg{width:14px;height:14px}
+.vz.mudo{color:var(--red-500)}
+[data-disp].habla .vz:not(.mudo){color:var(--ink-950);background:var(--green-500);box-shadow:0 0 10px var(--green-500)}
+[data-disp] .ficha-mini,[data-disp] .fpick{transition:box-shadow .15s}
+[data-disp].habla .ficha-mini,[data-disp].habla .fpick{box-shadow:0 0 0 2px var(--c),0 0 18px 4px var(--c)}
 .nombre.fijo{display:flex;align-items:center;color:var(--ink-50);border-color:transparent;background:none}
 .chip.tu{border-color:var(--cyan-500);color:var(--cyan-400)}
 .asientos .jn{flex:1;font-weight:600;color:var(--ink-50)}
@@ -2440,10 +2452,12 @@ function ponerMusica(){
   if (!pistaMusica){
     pistaMusica = new Audio('musica.mp3');
     pistaMusica.loop = true;
-    pistaMusica.volume = .3;
+    volumenMusica();
   }
   if (pistaMusica.paused) pistaMusica.play().catch(() => {});
 }
+// con la voz abierta, la música baja para que se oiga a los demás (y no se cuele por el micrófono)
+function volumenMusica(){ if (pistaMusica) pistaMusica.volume = VOZ.on ? .08 : .3; }
 document.addEventListener('pointerdown', despertarAudio, true);
 document.addEventListener('keydown', despertarAudio, true);
 
@@ -2659,6 +2673,7 @@ async function crearSala(codigo){
   });
   RED.peer.on('disconnected', () => { try { RED.peer.reconnect(); } catch (e) {} });
   RED.peer.on('error', e => console.warn('[sala]', e.type));
+  escucharLlamadas(RED.peer);
   if (G) G.sala = RED.sala;
   clearInterval(RED.reloj);
   RED.reloj = setInterval(() => {
@@ -2675,6 +2690,7 @@ function mensajeDeInvitado(conn, m){
   if (!m || typeof m !== 'object') return;
   if (m.t === 'hola') return sentarInvitado(conn, m.nombre);
   if (m.t === 'jugada' && RED.conexiones.has(conn.peer)) return jugadaRemota(conn, m);
+  if (m.t === 'voz' && RED.conexiones.has(conn.peer)) return vozDeInvitado(conn.peer, m);
 }
 
 function sentarInvitado(conn, nombre){
@@ -2704,6 +2720,7 @@ function sentarInvitado(conn, nombre){
   }
   RED.conexiones.set(conn.peer, conn);
   conn.send({t:'bienvenida', yo:conn.peer, sala:RED.sala});
+  conn.send({t:'voz', lista:VOZ.lista});
   guardar();
   render();
 }
@@ -2713,6 +2730,7 @@ function sentarInvitado(conn, nombre){
 function invitadoSeFue(conn){
   if (RED.conexiones.get(conn.peer) !== conn) return;
   RED.conexiones.delete(conn.peer);
+  if (conn.peer in VOZ.lista) vozDeInvitado(conn.peer, {on:false});
   if (G && UI.vista === 'juego' && G.fase !== 'final'){
     G.jugadores.forEach((j, k) => {
       if (j.disp !== conn.peer || j.fuera) return;
@@ -2823,6 +2841,7 @@ async function unirse(){
     else if (RED.anfitrion) anfitrionSeFue(RED.anfitrion);
   });
   RED.peer.on('disconnected', () => { try { RED.peer.reconnect(); } catch (e) {} });
+  escucharLlamadas(RED.peer);
   Object.assign(RED, {rol:'invitado', yo:RED.peer.id, sala:codigo, nombre, estado:'entrando', intentos:0});
   G = null;
   UI.vista = 'setup';
@@ -2858,8 +2877,10 @@ function mensajeDelAnfitrion(m){
   if (!m || typeof m !== 'object') return;
   if (m.t === 'bienvenida'){
     Object.assign(RED, {yo:m.yo, estado:'dentro', intentos:0, msg:''});
+    if (VOZ.on) anunciarVoz();   // volvió tras un corte con la voz abierta
     return render();
   }
+  if (m.t === 'voz'){ VOZ.lista = m.lista || {}; conectarVoz(); return pintarPanel(); }
   if (m.t === 'fuera'){ RED.estado = 'fuera'; return avisoRed(m.texto); }
   if (m.t === 'dados') return rodarDados(m.d);
   if (m.t === 'trato'){
@@ -2890,6 +2911,8 @@ function enviar(m){
 // y los asientos de los invitados los juegan bots.
 function salirDeSala(){
   const eraInvitado = soyInvitado();
+  apagarVoz(true);
+  VOZ.lista = {};
   clearInterval(RED.reloj);
   for (const c of RED.conexiones.values()) c.close();
   if (RED.peer) RED.peer.destroy();
@@ -2911,6 +2934,172 @@ function salirDeSala(){
     }
   }
   render(true);
+}
+
+// ----- voz -----
+// Quien activa la voz habla con los demás que la tengan activa: cada pareja tiene su llamada directa
+// (WebRTC, con PeerJS, como las jugadas). El anfitrión lleva la lista de quién está en la voz y se la manda
+// a todos; de cada pareja llama el de id menor, para no llamarse dos veces. El micrófono empieza apagado.
+const VOZ = {on:false, mudo:false, pidiendo:false, msg:'', stream:null, lista:{}, llamadas:new Map(), audios:new Map(),
+  medidores:new Map(), hablando:new Set(), relojes:[]};
+const ICONO_MIC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+const ICONO_MIC_NO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M15 9.5V6a3 3 0 0 0-5.7-1.3M9 9v2a3 3 0 0 0 4.6 2.5M5 11a7 7 0 0 0 11.3 5.5M19 11a7 7 0 0 1-.4 2.3M12 18v3M4 4l16 16"/></svg>';
+
+// el asiento de cada id: el anfitrión juega como 'anfitrion'; cada invitado, con su id
+const dispDe = id => id === PREFIJO_SALA + RED.sala ? 'anfitrion' : id;
+const miIdVoz = () => RED.peer && RED.peer.id;
+
+function micDe(disp){
+  if (!disp) return '';
+  const id = Object.keys(VOZ.lista).find(x => dispDe(x) === disp);
+  if (id === undefined) return '';
+  const mudo = VOZ.lista[id];
+  return `<span class="vz${mudo ? ' mudo' : ''}" title="${mudo ? 'Silenciado' : 'En la voz'}">${mudo ? ICONO_MIC_NO : ICONO_MIC}</span>`;
+}
+
+function htmlVoz(){
+  if (!enLinea() || !RED.peer || (soyInvitado() && RED.estado !== 'dentro' && !VOZ.on)) return '';
+  const n = Object.keys(VOZ.lista).length;
+  const msg = VOZ.msg ? `<p class="aviso-red">${esc(VOZ.msg)}</p>` : '';
+  if (!VOZ.on) return `<div class="voz"><button type="button" class="btn ghost sm" data-a="voz" ${VOZ.pidiendo ? 'disabled' : ''}>${ICONO_MIC}${VOZ.pidiendo ? 'Pidiendo el micrófono…' : 'Hablar por voz'}</button>
+    <span class="voz-n">${n ? `${n} en la voz` : 'Mejor con audífonos'}</span>${msg}</div>`;
+  return `<div class="voz"><button type="button" class="btn sm ${VOZ.mudo ? 'alt' : 'abierto'}" data-a="mudo" aria-pressed="${VOZ.mudo}">${VOZ.mudo ? ICONO_MIC_NO + 'Silenciado' : ICONO_MIC + 'Micrófono abierto'}</button>
+    <button type="button" class="link" data-a="voz">Salir de la voz</button><span class="voz-n">${n} en la voz</span>${msg}</div>`;
+}
+
+async function encenderVoz(){
+  if (VOZ.on || VOZ.pidiendo || !RED.peer) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ VOZ.msg = 'Este navegador no deja usar el micrófono aquí.'; return pintarPanel(); }
+  Object.assign(VOZ, {pidiendo:true, msg:''});
+  pintarPanel();
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:true}});
+  } catch (e){
+    VOZ.pidiendo = false;
+    VOZ.msg = e && e.name === 'NotAllowedError' ? 'El navegador no dio permiso para usar el micrófono.' : 'No se encontró un micrófono.';
+    return pintarPanel();
+  }
+  VOZ.pidiendo = false;
+  if (!enLinea() || !RED.peer){ stream.getTracks().forEach(t => t.stop()); return pintarPanel(); }   // salió de la sala mientras tanto
+  Object.assign(VOZ, {on:true, mudo:false, stream});
+  despertarAudio();
+  medirVoz(miIdVoz(), stream);
+  VOZ.relojes = [setInterval(escucharVoces, 100), setInterval(conectarVoz, 5000)];
+  volumenMusica();
+  medir('activar_voz');
+  anunciarVoz();
+  pintarPanel();
+}
+
+// callado: al salir de la sala, sin avisar ni pintar (ya no hay a quién)
+function apagarVoz(callado){
+  if (!VOZ.on) return;
+  for (const call of VOZ.llamadas.values()) call.close();
+  for (const id of [...VOZ.medidores.keys()]) callarA(id);
+  VOZ.llamadas.clear();
+  VOZ.stream.getTracks().forEach(t => t.stop());
+  VOZ.relojes.forEach(clearInterval);
+  Object.assign(VOZ, {on:false, mudo:false, stream:null, relojes:[], msg:''});
+  VOZ.hablando.clear();
+  volumenMusica();
+  if (callado) return;
+  anunciarVoz();
+  pintarPanel();
+}
+
+function silenciar(mudo){
+  if (!VOZ.on) return;
+  VOZ.mudo = mudo;
+  VOZ.stream.getAudioTracks().forEach(t => t.enabled = !mudo);
+  anunciarVoz();
+  pintarPanel();
+}
+
+// Que la lista sepa si este equipo está en la voz (y si está silenciado).
+function anunciarVoz(){
+  if (soyInvitado()) return enviar({t:'voz', on:VOZ.on, mudo:VOZ.mudo});
+  const yo = miIdVoz();
+  if (!yo) return;
+  if (VOZ.on) VOZ.lista[yo] = VOZ.mudo; else delete VOZ.lista[yo];
+  avisarTodos({t:'voz', lista:VOZ.lista});
+  conectarVoz();
+}
+function vozDeInvitado(id, m){
+  if (m.on) VOZ.lista[id] = !!m.mudo; else delete VOZ.lista[id];
+  avisarTodos({t:'voz', lista:VOZ.lista});
+  conectarVoz();
+  pintarPanel();
+}
+
+// Cuelga con quien salió de la voz y llama a quien entró (y no contestó todavía).
+function conectarVoz(){
+  if (!VOZ.on || !RED.peer || RED.peer.destroyed) return;
+  const yo = miIdVoz();
+  for (const [id, call] of [...VOZ.llamadas]) if (!(id in VOZ.lista)){ VOZ.llamadas.delete(id); call.close(); callarA(id); }
+  for (const id in VOZ.lista) if (id !== yo && yo < id && !VOZ.llamadas.has(id)) atender(RED.peer.call(id, VOZ.stream));
+}
+function escucharLlamadas(peer){
+  peer.on('call', call => {
+    if (!VOZ.on || !(call.peer in VOZ.lista)) return call.close();
+    call.answer(VOZ.stream);
+    atender(call);
+  });
+}
+function atender(call){
+  if (!call) return;
+  const id = call.peer, vieja = VOZ.llamadas.get(id);
+  if (vieja && vieja !== call) vieja.close();
+  VOZ.llamadas.set(id, call);
+  call.on('stream', remoto => oirA(id, remoto));
+  const fin = () => { if (VOZ.llamadas.get(id) === call){ VOZ.llamadas.delete(id); callarA(id); } };
+  call.on('close', fin);
+  call.on('error', fin);
+}
+
+// Cada voz suena en su propio <audio>; un analizador aparte dice si alguien está hablando.
+function oirA(id, stream){
+  callarA(id);
+  const el = document.createElement('audio');
+  el.autoplay = true;
+  el.playsInline = true;
+  el.srcObject = stream;
+  document.body.appendChild(el);
+  el.play().catch(() => {});
+  VOZ.audios.set(id, el);
+  medirVoz(id, stream);
+}
+function callarA(id){
+  const el = VOZ.audios.get(id);
+  if (el){ el.srcObject = null; el.remove(); VOZ.audios.delete(id); }
+  const m = VOZ.medidores.get(id);
+  if (m){ m.fuente.disconnect(); m.salida.disconnect(); VOZ.medidores.delete(id); }
+  if (VOZ.hablando.delete(id)) marcarVoz();
+}
+function medirVoz(id, stream){
+  if (!ctxAudio || !id) return;
+  const fuente = ctxAudio.createMediaStreamSource(stream), an = ctxAudio.createAnalyser(), salida = ctxAudio.createGain();
+  an.fftSize = 512;
+  salida.gain.value = 0;   // el analizador tiene que llegar a la salida para que corra, pero sin sonar
+  fuente.connect(an); an.connect(salida); salida.connect(ctxAudio.destination);
+  VOZ.medidores.set(id, {fuente, an, salida, datos:new Float32Array(an.fftSize), visto:-1e9});
+}
+function escucharVoces(){
+  const ahora = performance.now(), antes = [...VOZ.hablando].join();
+  VOZ.hablando.clear();
+  for (const [id, m] of VOZ.medidores){
+    m.an.getFloatTimeDomainData(m.datos);
+    let suma = 0;
+    for (const x of m.datos) suma += x * x;
+    if (Math.sqrt(suma / m.datos.length) > .025) m.visto = ahora;
+    if (ahora - m.visto < 400) VOZ.hablando.add(id);
+  }
+  if ([...VOZ.hablando].join() !== antes) marcarVoz();
+}
+// Sin volver a pintar el panel: solo el brillo de quien habla.
+function marcarVoz(){
+  const hablan = new Set([...VOZ.hablando].map(dispDe));
+  document.querySelectorAll('[data-disp]').forEach(el => el.classList.toggle('habla', hablan.has(el.dataset.disp)));
 }
 
 function htmlSala(){
@@ -2941,9 +3130,9 @@ function htmlInvitacion(){
 // Lo que ve un invitado antes de que empiece la partida.
 function htmlSalaInvitado(){
   const s = UI.setup, dentro = RED.estado === 'dentro';
-  const asientos = dentro ? s.jugadores.map((j, k) => `<li style="--c:${COLORES[k]}"><span class="fpick">${icono(j.ficha)}</span><span class="jn">${esc(j.nombre)}</span>${j.disp === RED.yo ? '<span class="chip tu">tú</span>' : ''}${j.bot ? '<span class="chip">bot</span>' : ''}</li>`).join('') : '';
+  const asientos = dentro ? s.jugadores.map((j, k) => `<li style="--c:${COLORES[k]}" ${j.bot ? '' : `data-disp="${esc(j.disp || 'anfitrion')}"`}><span class="fpick">${icono(j.ficha)}</span><span class="jn">${esc(j.nombre)}</span>${micDe(j.bot ? '' : j.disp || 'anfitrion')}${j.disp === RED.yo ? '<span class="chip tu">tú</span>' : ''}${j.bot ? '<span class="chip">bot</span>' : ''}</li>`).join('') : '';
   return `<header class="ph"><svg><use href="#lobo"/></svg><div><h2>Lycanópolis</h2><p>// sala ${esc(RED.sala || '')}</p></div>${htmlSonido()}</header>
-    ${dentro ? `<section><h3>// jugadores</h3><ol class="asientos">${asientos}</ol></section>
+    ${dentro ? `<section><h3>// jugadores</h3><ol class="asientos">${asientos}</ol>${htmlVoz()}</section>
     <section><h3>// tema</h3><p class="vacio">${CURSOS[s.tema].n}${s.tema === 'algoritmos' && s.retos !== false ? ', con retos de programación' : ''} · partida ${s.modo === 'clasica' ? 'clásica' : 'corta'}</p></section>
     <p class="modo-desc">Esperando a que el anfitrión empiece la partida…</p>` : ''}
     ${RED.msg ? `<p class="aviso-red">${esc(RED.msg)}</p>` : ''}
@@ -3142,12 +3331,12 @@ function htmlSetup(){
   const s = UI.setup;
   const asientos = s.jugadores.map((j, k) => {
     const f = FICHAS.find(x => x.id === j.ficha);
-    const remoto = j.disp && j.disp !== 'anfitrion';
-    return `<li style="--c:${COLORES[k]}">
+    const remoto = j.disp && j.disp !== 'anfitrion', disp = j.bot ? '' : j.disp || 'anfitrion';
+    return `<li style="--c:${COLORES[k]}" ${disp ? `data-disp="${esc(disp)}"` : ''}>
       <button type="button" class="fpick" data-a="ficha" data-k="${k}" aria-label="Ficha: ${f.n}. Cambiar" title="Cambiar ficha">${icono(j.ficha)}</button>
       ${remoto
-        ? `<span class="nombre fijo">${esc(j.nombre)}</span><span class="chip ${j.desconectado ? '' : 'tu'}">${j.desconectado ? 'desconectado' : 'en línea'}</span>`
-        : `<input class="nombre" id="nombre-${k}" data-k="${k}" value="${esc(j.nombre)}" maxlength="14" aria-label="Nombre del jugador ${k + 1}" autocomplete="off">
+        ? `<span class="nombre fijo">${esc(j.nombre)}</span>${micDe(disp)}<span class="chip ${j.desconectado ? '' : 'tu'}">${j.desconectado ? 'desconectado' : 'en línea'}</span>`
+        : `<input class="nombre" id="nombre-${k}" data-k="${k}" value="${esc(j.nombre)}" maxlength="14" aria-label="Nombre del jugador ${k + 1}" autocomplete="off">${micDe(disp)}
       <span class="seg" role="group" aria-label="Quién juega"><button type="button" data-a="tipo" data-k="${k}" data-v="0" aria-pressed="${!j.bot}">Persona</button><button type="button" data-a="tipo" data-k="${k}" data-v="1" aria-pressed="${j.bot}">Bot</button></span>`}
       ${s.jugadores.length > 2 ? `<button type="button" class="quitar" data-a="quitar" data-k="${k}" aria-label="Quitar a ${esc(j.nombre)}">×</button>` : ''}
     </li>`;
@@ -3161,7 +3350,7 @@ function htmlSetup(){
     <section><h3>${unTema ? '// edición' : '// tema: el curso del tablero'}</h3>${temas}
       ${s.tema === 'algoritmos' ? `<label class="chk"><input type="checkbox" id="retos" ${s.retos !== false ? 'checked' : ''}><span>Retos de programación: al caer en un episodio puedes jugar su reto para comprarlo a mitad de precio o pagar la mitad de la renta.</span></label>` : ''}</section>
     <section><h3>// jugadores (de 2 a 6)</h3><ol class="asientos">${asientos}</ol>
-      ${s.jugadores.length < 6 ? '<button type="button" class="btn ghost sm" data-a="agregar">Agregar jugador</button>' : ''}</section>
+      ${s.jugadores.length < 6 ? '<button type="button" class="btn ghost sm" data-a="agregar">Agregar jugador</button>' : ''}${htmlVoz()}</section>
     ${htmlSala()}
     <section><h3>// modo</h3>
       <span class="seg" role="group" aria-label="Modo de juego"><button type="button" data-a="modo" data-v="clasica" aria-pressed="${s.modo === 'clasica'}">Clásica</button><button type="button" data-a="modo" data-v="corta" aria-pressed="${s.modo === 'corta'}">Corta</button></span>
@@ -3328,15 +3517,15 @@ function htmlJuego(){
     const antes = UI.plata[k];
     const anim = antes === undefined || antes === p.dinero ? '' : p.dinero > antes ? 'sube' : 'baja';
     UI.plata[k] = p.dinero;
-    return `<li class="${k === G.turno && G.fase !== 'final' ? 'act' : ''} ${k === ver ? 'visto' : ''} ${p.fuera ? 'out' : ''}" data-a="verJugador" data-k="${k}" title="Ver las casillas de ${esc(p.nombre)}">
-      ${fichaMini(p)}<div style="min-width:0"><div class="jn">${esc(p.nombre)}</div><div class="chips"><span class="chip">${casillas} ${casillas === 1 ? 'casilla' : 'casillas'}</span>${chips}</div></div>
+    return `<li class="${k === G.turno && G.fase !== 'final' ? 'act' : ''} ${k === ver ? 'visto' : ''} ${p.fuera ? 'out' : ''}" data-a="verJugador" data-k="${k}" ${p.bot ? '' : `data-disp="${esc(p.disp || 'anfitrion')}"`} title="Ver las casillas de ${esc(p.nombre)}">
+      ${fichaMini(p)}<div style="min-width:0"><div class="jn">${esc(p.nombre)}</div><div class="chips">${micDe(p.bot ? '' : p.disp || 'anfitrion')}<span class="chip">${casillas} ${casillas === 1 ? 'casilla' : 'casillas'}</span>${chips}</div></div>
       <span class="plata ${anim}">${money(p.dinero)}</span></li>`;
   }).join('');
   const negociar = ver === G.turno && puedeGestionar() && ['tirar', 'bucle', 'fin', 'deuda'].includes(G.fase) && vivos().length > 1;
   const titulo = ver === G.turno && esMio(ver) ? `// casillas de ${pv.nombre} (tu turno)` : `// casillas de ${pv.nombre}`;
   return `<header class="ph"><svg><use href="#lobo"/></svg><div><h2>Lycanópolis</h2><p>// ${enLinea() ? `sala ${RED.sala} · ` : ''}${nom({n:CURSOS[TEMA].corto})} · ronda ${G.ronda} · partida ${G.opc.modo === 'clasica' ? 'clásica' : 'corta'}${G.opc.bote ? ` · bote ${money(G.bote)}` : ''}</p></div>${htmlSonido()}</header>
     ${enLinea() && RED.msg ? `<p class="aviso-red">${esc(RED.msg)}${soyInvitado() && RED.estado === 'perdida' ? ' <button type="button" class="link" data-a="reentrar">Volver a entrar</button>' : ''}</p>` : ''}
-    <section><h3>// jugadores</h3><ol class="jug">${filas}</ol></section>
+    <section><h3>// jugadores</h3><ol class="jug">${filas}</ol>${htmlVoz()}</section>
     <section><h3>${esc(titulo)}</h3>${htmlCasillasDe(ver)}${negociar ? '<div style="margin-top:12px"><button type="button" class="btn ghost sm" data-a="negociar">Negociar con otro jugador</button></div>' : ''}</section>
     <section><h3>// bitácora</h3><ol class="log">${htmlBitacora()}</ol></section>
     <footer class="pie"><button type="button" class="link" data-a="reglas">Cómo se juega</button>${soyInvitado() ? '<button type="button" class="link" data-a="salirSala">Salir de la sala</button>' : '<button type="button" class="link" data-a="nueva">Nueva partida</button>'}${G.fase === 'final' ? '<button type="button" class="link" data-a="verFinal">Resultados</button>' : soyInvitado() ? '' : '<button type="button" class="link peligro" data-a="terminarYa">Terminar ahora</button>'}${htmlCanal()}</footer>`;
@@ -3347,6 +3536,7 @@ function pintarPanel(){
   const scroll = panel.querySelector('.log')?.scrollTop || 0;
   panel.innerHTML = UI.vista === 'setup' || !G ? htmlSetup() : htmlJuego();
   const log = panel.querySelector('.log'); if (log) log.scrollTop = scroll;
+  marcarVoz();
   emitir();
 }
 
@@ -3611,6 +3801,8 @@ const ACCIONES = {
   aceptar:() => G.tratoPendiente && esMio(G.tratoPendiente.para) && accion(() => responderTrato(true)),
   rechazar:() => G.tratoPendiente && esMio(G.tratoPendiente.para) && accion(() => responderTrato(false)),
   reglas:() => { UI.ventana = {t:'reglas'}; pintarVentana(); medir('ver_reglas'); },
+  voz:() => VOZ.on ? apagarVoz() : encenderVoz(),
+  mudo:() => silenciar(!VOZ.mudo),
   cerrar:() => { UI.ventana = null; pintarVentana(); },
   verFinal:() => { UI.ventana = {t:'final'}; pintarVentana(); },
   jugarReto:() => accion(empezarReto),
