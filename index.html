@@ -247,6 +247,11 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--cyan-500);outli
 .ph svg{width:38px;height:40px;flex:0 0 auto}
 .ph h2{margin:0;font-family:var(--font-display);font-weight:700;font-size:22px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-50);line-height:1.1}
 .ph p{margin:2px 0 0;font-family:var(--font-mono);font-size:12px;color:var(--ink-300)}
+.ph .sonido{display:flex;gap:6px;margin-left:auto;flex:0 0 auto}
+.ph .sonido .mini{position:relative;display:grid;place-items:center;width:34px;height:32px;padding:0;color:var(--cyan-400)}
+.ph .sonido svg{width:18px;height:18px}
+.ph .sonido .mini[aria-pressed="false"]{color:var(--ink-400)}
+.ph .sonido .mini[aria-pressed="false"]::after{content:'';position:absolute;left:7px;right:7px;top:50%;height:2px;border-radius:1px;background:var(--magenta-400);transform:rotate(-40deg)}
 .panel h3{margin:0 0 10px;font-family:var(--font-mono);font-weight:500;font-size:12px;letter-spacing:.03em;color:var(--cyan-500)}
 .panel section{min-width:0}
 .jug{list-style:none;margin:0;padding:0;display:grid;gap:4px}
@@ -1043,6 +1048,7 @@ const deJugador = pi => Object.keys(G.due).map(Number).filter(i => G.due[i].o ==
 const libres = () => CASILLAS.filter((c, i) => c.precio && !G.due[i]).length;
 
 function anotar(msg){
+  G.nLog = (G.nLog ?? G.bitacora.length) + 1;   // las líneas de toda la partida: la bitácora guarda solo las últimas 150
   G.bitacora.push(msg);
   if (G.bitacora.length > 150) G.bitacora.shift();
   G.msg = msg;
@@ -2277,7 +2283,11 @@ function jugarReto(r, v){
   const R = UI.reto;
   if (!R || R.fin || !G || G.fase !== 'reto') return;
   const res = MOTORES[R.def.tipo].accion(R.st, r, v, R.def);
-  if (res) R.fin = {gano:res === 'gana'};
+  if (res){
+    R.fin = {gano:res === 'gana'};
+    suena(R.fin.gano ? 'festejo' : 'fallo');
+    retoSonado = true;
+  } else suena('toque');
   pintarVentana(true);
 }
 
@@ -2330,6 +2340,180 @@ function htmlReto(){
     <pre class="codigo"><code>${resaltar(d.codigo)}</code></pre>
     <div class="cerrar-fila"><button type="button" class="btn go" data-a="retoSeguir">Seguir</button></div></div>`;
 }
+
+// ---------- sonido ----------
+// La música es musica.mp3, al lado de este archivo (si no está, no suena). Los efectos se sintetizan aquí, en do mayor
+// como los del promo, y salen de la bitácora: cada línea nueva tiene su sonido. Así suenan igual en el equipo del
+// anfitrión y en el de cada invitado, con personas o con bots. El navegador no deja sonar nada antes del primer toque.
+const SONIDO = {musica:true, efectos:true};
+try { Object.assign(SONIDO, JSON.parse(localStorage.getItem('lycanopolis.sonido')) || {}); } catch (e) {}
+let ctxAudio = null, salidaAudio = null, pistaMusica = null, lineasOidas = null, posOidas = null, retoSonado = false;
+
+function guardarSonido(){
+  try { localStorage.setItem('lycanopolis.sonido', JSON.stringify({musica:SONIDO.musica, efectos:SONIDO.efectos})); } catch (e) {}
+}
+function despertarAudio(){
+  if (!ctxAudio){
+    const C = window.AudioContext || window.webkitAudioContext;
+    if (!C) return;
+    ctxAudio = new C();
+    salidaAudio = ctxAudio.createGain();
+    salidaAudio.gain.value = .55;
+    salidaAudio.connect(ctxAudio.destination);
+  }
+  if (ctxAudio.state === 'suspended') ctxAudio.resume();
+  ponerMusica();
+}
+function ponerMusica(){
+  if (!SONIDO.musica){ if (pistaMusica) pistaMusica.pause(); return; }
+  if (!pistaMusica){
+    pistaMusica = new Audio('musica.mp3');
+    pistaMusica.loop = true;
+    pistaMusica.volume = .3;
+  }
+  if (pistaMusica.paused) pistaMusica.play().catch(() => {});
+}
+document.addEventListener('pointerdown', despertarAudio, true);
+document.addEventListener('keydown', despertarAudio, true);
+
+// un tono con su envolvente; hasta: la frecuencia a la que se desliza
+function nota(f, t, dur, {tipo = 'sine', vol = .2, ataque = .005, hasta = 0} = {}){
+  const o = ctxAudio.createOscillator(), g = ctxAudio.createGain();
+  o.type = tipo;
+  o.frequency.setValueAtTime(f, t);
+  if (hasta) o.frequency.exponentialRampToValueAtTime(hasta, t + dur);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(vol, t + ataque);
+  g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  o.connect(g).connect(salidaAudio);
+  o.start(t);
+  o.stop(t + dur + .05);
+}
+// ruido filtrado: dados, cartas, martillazos; hasta: a dónde se mueve el filtro
+function ruido(t, dur, {vol = .3, frec = 2000, q = 1, hasta = 0} = {}){
+  const n = Math.ceil(ctxAudio.sampleRate * dur), b = ctxAudio.createBuffer(1, n, ctxAudio.sampleRate), d = b.getChannelData(0);
+  for (let k = 0; k < n; k++) d[k] = (Math.random() * 2 - 1) * (1 - k / n) ** 2;
+  const s = ctxAudio.createBufferSource(), f = ctxAudio.createBiquadFilter(), g = ctxAudio.createGain();
+  s.buffer = b;
+  f.type = 'bandpass';
+  f.frequency.setValueAtTime(frec, t);
+  if (hasta) f.frequency.exponentialRampToValueAtTime(hasta, t + dur);
+  f.Q.value = q;
+  g.gain.value = vol;
+  s.connect(f).connect(g).connect(salidaAudio);
+  s.start(t);
+}
+// Un golpe de dado: un clic seco (un chasquido de ruido por un filtro que resuena, como el plástico duro) y, si
+// pega en la mesa, además un golpe grave y corto.
+function golpeDado(t, vol, mesa){
+  const sr = ctxAudio.sampleRate, n = Math.ceil(sr * .03), b = ctxAudio.createBuffer(1, n, sr), d = b.getChannelData(0);
+  for (let k = 0; k < n; k++) d[k] = (Math.random() * 2 - 1) * Math.exp(-k / (sr * .0025));
+  const s = ctxAudio.createBufferSource(), f = ctxAudio.createBiquadFilter(), g = ctxAudio.createGain();
+  s.buffer = b;
+  f.type = 'bandpass';
+  f.frequency.value = 2200 + Math.random() * 3200;
+  f.Q.value = 5 + Math.random() * 7;
+  g.gain.value = vol;
+  s.connect(f).connect(g).connect(salidaAudio);
+  s.start(t);
+  if (mesa) nota(130 + Math.random() * 90, t, .07, {vol:vol * .22, ataque:.001});
+}
+const [DO4, SOL4, DO5, MI5, SOL5, DO6, MI6, SOL6, DO7] = [261.63, 392, 523.25, 659.25, 783.99, 1046.5, 1318.5, 1567.98, 2093];
+const EFECTOS = {
+  // dos dados que chocan en la mano al soltarlos y rebotan en la mesa, cada vez más seguido y más suave
+  dados:t => {
+    for (let k = 0; k < 3; k++) golpeDado(t + k * .035 + Math.random() * .015, 1.4, false);
+    for (const desfase of [0, .05 + Math.random() * .03]){
+      let tt = t + .13 + desfase, paso = .13, vol = 2.6;
+      for (let k = 0; k < 8; k++){
+        golpeDado(tt, vol, true);
+        if (Math.random() < .5) golpeDado(tt + .01 + Math.random() * .01, vol * .4, false);   // el dado gira y vuelve a sonar
+        tt += paso * (.8 + Math.random() * .4);
+        paso *= .72;
+        vol *= .7;
+      }
+    }
+  },
+  paso:t => nota(1500, t, .045, {tipo:'triangle', vol:.1}),
+  moneda:t => { nota(987.77, t, .08, {tipo:'square', vol:.08}); nota(MI6, t + .07, .4, {tipo:'square', vol:.08}); },
+  compra:t => { EFECTOS.moneda(t); [DO5, MI5, SOL5].forEach((f, k) => nota(f, t + .14 + k * .07, .35, {vol:.18})); },
+  pago:t => { nota(DO5, t, .16, {tipo:'triangle', vol:.22}); nota(SOL4, t + .13, .3, {tipo:'triangle', vol:.22}); },
+  carta:t => ruido(t, .3, {vol:.4, frec:500, q:.8, hasta:4000}),
+  acierto:t => [DO6, MI6, SOL6].forEach((f, k) => nota(f, t + k * .08, .45, {vol:.18})),
+  error:t => { nota(220, t, .15, {tipo:'square', vol:.06}); nota(185, t + .14, .25, {tipo:'square', vol:.06}); },
+  festejo:t => {
+    [DO5, MI5, SOL5, DO6, MI6, SOL6, DO7].forEach((f, k) => nota(f, t + k * .055, .7, {vol:.15}));
+    for (let k = 0; k < 12; k++) nota(2500 + Math.random() * 2600, t + .1 + Math.random() * .8, .2, {vol:.04});
+  },
+  fallo:t => [SOL4, 349.23, 329.63, 293.66].forEach((f, k) => nota(f, t + k * .16, k === 3 ? .6 : .2, {tipo:'triangle', vol:.18})),
+  bucle:t => nota(660, t, .7, {vol:.22, hasta:170}),
+  sale:t => nota(260, t, .45, {vol:.22, hasta:880}),
+  dobles:t => { nota(MI6, t, .1, {vol:.16}); nota(SOL6, t + .09, .22, {vol:.16}); },
+  trato:t => { nota(SOL5, t, .3, {vol:.18}); nota(DO6, t + .12, .5, {vol:.18}); },
+  turno:t => nota(880, t, .12, {vol:.08}),
+  ejercicio:t => { ruido(t, .05, {vol:.5, frec:3000, q:2}); nota(MI5, t + .02, .25, {tipo:'triangle', vol:.18}); },
+  quiebra:t => [SOL4, 369.99, 349.23, 329.63].forEach((f, k) => nota(f, t + k * .3, k === 3 ? .9 : .32, {tipo:'sawtooth', vol:.05})),
+  fanfarria:t => {
+    [[SOL4, 0], [DO5, .15], [MI5, .3], [SOL5, .45]].forEach(([f, d]) => nota(f, t + d, d === .45 ? 1.2 : .25, {tipo:'square', vol:.07}));
+    [DO5, MI5, SOL5, DO6].forEach(f => nota(f, t + .45, 1.5, {vol:.12}));
+  },
+  inicio:t => [DO5, SOL5, DO6].forEach((f, k) => nota(f, t + k * .09, .4, {vol:.16})),
+  toque:t => nota(1200, t, .04, {tipo:'triangle', vol:.07}),
+};
+function suena(nombre, retraso = 0){
+  if (!SONIDO.efectos || !ctxAudio || ctxAudio.state !== 'running' || !EFECTOS[nombre]) return;
+  EFECTOS[nombre](ctxAudio.currentTime + .01 + retraso);
+}
+
+// Cada línea nueva de la bitácora, con su sonido: el primero que encaje.
+const SONIDOS_BITACORA = [
+  [/^Fin de la partida/, 'fanfarria'],
+  [/ quiebra: /, 'quiebra'],
+  [/no gana el reto|no lo resuelve/, 'fallo'],
+  [/gana el reto|reto sorpresa y cobra/, 'festejo'],
+  [/: correcto, cobra/, 'acierto'],
+  [/»: no; era/, 'error'],
+  [/queda atrapado en el bucle|dobles por tercera vez/, 'bucle'],
+  [/rompe el bucle|sale del bucle|paga .* y sale\./, 'sale'],
+  [/ compra .* por /, 'compra'],
+  [/ hace .* en el módulo/, 'ejercicio'],
+  [/^Trato:|acepta el trato/, 'trato'],
+  [/no acepta el trato/, 'error'],
+  [/ cobra | recibe .* de los demás| se lleva el bote| recupera | y recibe /, 'moneda'],
+  [/ paga |tiene que pagar/, 'pago'],
+  [/sacó dobles/, 'dobles'],
+  [/^Carta:|saca una carta de Idea de lycan|^Pausa activa para/, 'carta'],
+  [/^Empieza la partida/, 'inicio'],
+  [/^Turno de/, 'turno'],
+];
+function oirBitacora(){
+  if (!G){ lineasOidas = null; return; }
+  const total = G.nLog ?? G.bitacora.length;
+  if (lineasOidas === null){ lineasOidas = total; return; }   // lo que ya estaba al abrir no suena
+  if (total < lineasOidas) lineasOidas = 0;                    // una partida nueva
+  const nuevas = total > lineasOidas ? G.bitacora.slice(-Math.min(total - lineasOidas, G.bitacora.length)) : [];
+  lineasOidas = total;
+  const sonidos = [];
+  for (const l of nuevas){
+    const s = (SONIDOS_BITACORA.find(([re]) => re.test(l)) || [])[1];
+    // quien jugó el reto ya oyó cómo le fue, en la ventana
+    if (retoSonado && (s === 'festejo' || s === 'fallo')){ retoSonado = false; continue; }
+    if (s && !sonidos.includes(s)) sonidos.push(s);
+  }
+  sonidos.slice(0, 3).forEach((s, k) => suena(s, k * .18));
+}
+// las fichas que se mueven, paso a paso
+function oirFichas(sinAnim){
+  const pos = G.jugadores.map(p => p.pos);
+  if (posOidas && !sinAnim && pos.length === posOidas.length && pos.some((x, k) => x !== posOidas[k])) suena('paso');
+  posOidas = pos;
+}
+
+const ICONO_MUSICA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l11-2v13" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.8" fill="currentColor"/><circle cx="17.5" cy="16" r="2.8" fill="currentColor"/></svg>';
+const ICONO_EFECTOS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6.5 9H3v6h3.5L11 19z" fill="currentColor"/><path d="M15.5 8.8a4.5 4.5 0 0 1 0 6.4M18.6 5.8a9 9 0 0 1 0 12.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+const htmlSonido = () => `<span class="sonido">
+  <button type="button" class="mini" data-a="musica" aria-pressed="${SONIDO.musica}" aria-label="Música" title="${SONIDO.musica ? 'Apagar la música' : 'Poner la música'}">${ICONO_MUSICA}</button>
+  <button type="button" class="mini" data-a="efectos" aria-pressed="${SONIDO.efectos}" aria-label="Efectos de sonido" title="${SONIDO.efectos ? 'Apagar los efectos' : 'Poner los efectos'}">${ICONO_EFECTOS}</button></span>`;
 
 // ---------- en línea (PeerJS) ----------
 // El anfitrión crea la sala y mueve la partida como siempre; cada invitado se conecta directo a su navegador
@@ -2666,7 +2850,7 @@ function htmlSala(){
 
 // Lo primero que ve quien abre un enlace de invitación.
 function htmlInvitacion(){
-  return `<header class="ph"><svg><use href="#lobo"/></svg><div><h2>Lycanópolis</h2><p>// invitación</p></div></header>
+  return `<header class="ph"><svg><use href="#lobo"/></svg><div><h2>Lycanópolis</h2><p>// invitación</p></div>${htmlSonido()}</header>
     <section><h3>// sala en línea</h3>
       <p class="sala-codigo">Sala <b>${esc(UI.invitacion)}</b></p>
       <p class="modo-desc">Te invitaron a una partida. Escribe tu nombre y entra: cada quien juega su turno desde su equipo.</p>
@@ -2679,7 +2863,7 @@ function htmlInvitacion(){
 function htmlSalaInvitado(){
   const s = UI.setup, dentro = RED.estado === 'dentro';
   const asientos = dentro ? s.jugadores.map((j, k) => `<li style="--c:${COLORES[k]}"><span class="fpick">${icono(j.ficha)}</span><span class="jn">${esc(j.nombre)}</span>${j.disp === RED.yo ? '<span class="chip tu">tú</span>' : ''}${j.bot ? '<span class="chip">bot</span>' : ''}</li>`).join('') : '';
-  return `<header class="ph"><svg><use href="#lobo"/></svg><div><h2>Lycanópolis</h2><p>// sala ${esc(RED.sala || '')}</p></div></header>
+  return `<header class="ph"><svg><use href="#lobo"/></svg><div><h2>Lycanópolis</h2><p>// sala ${esc(RED.sala || '')}</p></div>${htmlSonido()}</header>
     ${dentro ? `<section><h3>// jugadores</h3><ol class="asientos">${asientos}</ol></section>
     <section><h3>// tema</h3><p class="vacio">${CURSOS[s.tema].n}${s.tema === 'algoritmos' && s.retos !== false ? ', con retos de programación' : ''} · partida ${s.modo === 'clasica' ? 'clásica' : 'corta'}</p></section>
     <p class="modo-desc">Esperando a que el anfitrión empiece la partida…</p>` : ''}
@@ -2760,7 +2944,8 @@ function pintarCasillas(){
 
 function pintarFichas(sinAnim){
   const capa = $('#fichas');
-  if (!G){ capa.innerHTML = ''; return; }
+  if (!G){ capa.innerHTML = ''; posOidas = null; return; }
+  oirFichas(sinAnim);
   if (capa.children.length !== G.jugadores.length){
     capa.innerHTML = G.jugadores.map((p, k) => `<div class="ficha" style="--c:${p.color}" title="${esc(p.nombre)}">${icono(p.ficha)}</div>`).join('');
     sinAnim = true;
@@ -2795,6 +2980,7 @@ const dadoHTML = v => `<span class="dado">${[...Array(9).keys()].map(k => `<i${C
 
 async function rodarDados(d){
   avisarTodos({t:'dados', d});
+  suena('dados');
   const box = $('#mesa .dados');
   if (box && !SIN_MOV){
     box.classList.add('rodando');
@@ -2891,7 +3077,7 @@ function htmlSetup(){
   const temas = unTema
     ? `<p class="tema-unico"><svg><use href="#i-${CURSOS[s.tema].ic}"/></svg><span>${CURSOS[s.tema].n}</span></p>`
     : `<div class="temas" role="radiogroup" aria-label="Curso del tablero">${TEMAS_ABIERTOS.map(id => `<button type="button" role="radio" aria-checked="${s.tema === id}" data-a="tema" data-v="${id}"><svg><use href="#i-${CURSOS[id].ic}"/></svg><span>${CURSOS[id].n}</span></button>`).join('')}</div>`;
-  return `<header class="ph"><svg><use href="#lobo"/></svg><div><h2>Lycanópolis</h2><p>// nueva partida</p></div></header>
+  return `<header class="ph"><svg><use href="#lobo"/></svg><div><h2>Lycanópolis</h2><p>// nueva partida</p></div>${htmlSonido()}</header>
     <section><h3>${unTema ? '// edición' : '// tema: el curso del tablero'}</h3>${temas}
       ${s.tema === 'algoritmos' ? `<label class="chk"><input type="checkbox" id="retos" ${s.retos !== false ? 'checked' : ''}><span>Retos de programación: al caer en un episodio puedes jugar su reto para comprarlo a mitad de precio o pagar la mitad de la renta.</span></label>` : ''}</section>
     <section><h3>// jugadores (de 2 a 6)</h3><ol class="asientos">${asientos}</ol>
@@ -2960,7 +3146,7 @@ function htmlJuego(){
   const negociar = ver === G.turno && puedeGestionar() && ['tirar', 'bucle', 'fin', 'deuda'].includes(G.fase) && vivos().length > 1;
   const log = G.bitacora.slice(-60).reverse().map(l => `<li>${esc(l)}</li>`).join('');
   const titulo = ver === G.turno && esMio(ver) ? `// casillas de ${pv.nombre} (tu turno)` : `// casillas de ${pv.nombre}`;
-  return `<header class="ph"><svg><use href="#lobo"/></svg><div><h2>Lycanópolis</h2><p>// ${enLinea() ? `sala ${RED.sala} · ` : ''}${nom({n:CURSOS[TEMA].corto})} · ronda ${G.ronda} · partida ${G.opc.modo === 'clasica' ? 'clásica' : 'corta'}${G.opc.bote ? ` · bote ${money(G.bote)}` : ''}</p></div></header>
+  return `<header class="ph"><svg><use href="#lobo"/></svg><div><h2>Lycanópolis</h2><p>// ${enLinea() ? `sala ${RED.sala} · ` : ''}${nom({n:CURSOS[TEMA].corto})} · ronda ${G.ronda} · partida ${G.opc.modo === 'clasica' ? 'clásica' : 'corta'}${G.opc.bote ? ` · bote ${money(G.bote)}` : ''}</p></div>${htmlSonido()}</header>
     ${enLinea() && RED.msg ? `<p class="aviso-red">${esc(RED.msg)}${soyInvitado() && RED.estado === 'perdida' ? ' <button type="button" class="link" data-a="reentrar">Volver a entrar</button>' : ''}</p>` : ''}
     <section><h3>// jugadores</h3><ol class="jug">${filas}</ol></section>
     <section><h3>${esc(titulo)}</h3>${htmlCasillasDe(ver)}${negociar ? '<div style="margin-top:12px"><button type="button" class="btn ghost sm" data-a="negociar">Negociar con otro jugador</button></div>' : ''}</section>
@@ -3203,6 +3389,7 @@ function render(sinAnim){
   pintarVentana();
   programarBot();
   emitir();
+  oirBitacora();
 }
 
 // ---------- eventos ----------
@@ -3302,6 +3489,14 @@ const ACCIONES = {
     catch (e){ avisoRed('Copia el enlace a mano.'); }
   },
   modo:(i, k, v) => { UI.setup.modo = v; pintarPanel(); },
+  musica:() => { SONIDO.musica = !SONIDO.musica; guardarSonido(); despertarAudio(); pintarPanel(); },
+  efectos:() => {
+    SONIDO.efectos = !SONIDO.efectos;
+    guardarSonido();
+    despertarAudio();
+    suena('moneda');
+    pintarPanel();
+  },
 };
 
 function proponer(){
