@@ -311,9 +311,43 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--cyan-500);outli
 .mini:hover:not(:disabled){border-color:var(--cyan-500);color:var(--ink-50)}
 .mini:disabled{opacity:.32;cursor:not-allowed}
 .vacio{margin:0;color:var(--ink-300);font-size:14px}
-.log{list-style:none;margin:0;padding:0;display:grid;gap:4px;max-height:230px;overflow:auto;font-family:var(--font-mono);font-size:12px;line-height:1.45;color:var(--ink-300)}
-.log li::before{content:"> ";color:var(--ink-500)}
-.log li:first-child{color:var(--ink-100)}
+/* bitácora: un bloque por turno, el más reciente arriba; dentro, lo que pasó en orden */
+.log{list-style:none;margin:0;padding:0 4px 2px 0;display:grid;gap:8px;max-height:360px;overflow:auto;font-size:13.5px;line-height:1.4;color:var(--ink-200);scrollbar-width:thin;scrollbar-color:var(--ink-600) transparent}
+.log ol{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.log .lr{display:flex;align-items:center;gap:10px;margin-top:2px;font-family:var(--font-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-400)}
+.log .lr::after{content:"";flex:1;height:1px;background:var(--ink-700)}
+.log .lg{--c:var(--ink-400);padding:8px 10px 10px;border:1px solid var(--ink-700);border-left:3px solid var(--c);border-radius:10px;background:var(--ink-900);opacity:.8}
+.log .lg.ahora{opacity:1;background:linear-gradient(100deg,color-mix(in srgb,var(--c) 10%,var(--ink-900)),var(--ink-900) 70%);box-shadow:0 0 20px -12px var(--c)}
+.log .lgc{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-family:var(--font-display);font-weight:600;font-size:14px;color:var(--c)}
+.log .lgc .ficha-mini{width:22px;height:22px;border-width:1.5px}
+.log .lgc .chip{font-weight:400}
+.log .le{display:grid;grid-template-columns:32px minmax(0,1fr);gap:6px;align-items:start}
+.log .le.nueva{animation:nueva .7s var(--ease-out)}
+@keyframes nueva{from{opacity:0;transform:translateX(-8px)}}
+.log .ic{display:flex;justify-content:center;gap:2px;height:1.4em;align-items:center;color:var(--ink-400)}
+.log .ic svg{width:15px;height:15px}
+.log .ic .dm{width:13px;height:13px;filter:drop-shadow(0 0 3px rgba(238,243,252,.25))}
+.dm rect{fill:var(--ink-50)}
+.dm circle{fill:var(--ink-950)}
+.log .lt{min-width:0;overflow-wrap:anywhere}
+.log .vacio-t{color:var(--ink-400);font-style:italic}
+.log .lj{font-weight:600;color:var(--c)}
+.log .din{font-family:var(--font-mono);font-size:.92em;font-weight:500;color:var(--oro);white-space:nowrap}
+.log .t-cobro .din{color:var(--green-500)}
+.log .t-pago .din,.log .t-quiebra .din{color:var(--red-500)}
+.log .lc{position:relative;padding:0 0 0 10px;border:0;background:none;font:inherit;color:var(--ink-50);cursor:pointer;text-decoration:underline dotted var(--ink-500);text-underline-offset:3px}
+.log .lc::before{content:"";position:absolute;left:0;top:.28em;width:6px;height:.85em;border-radius:2px;background:var(--g)}
+.log .lc:hover{color:var(--cyan-400)}
+.log .t-cobro .ic{color:var(--green-500)}
+.log .t-pago .ic,.log .t-quiebra .ic{color:var(--red-500)}
+.log .t-compra .ic,.log .t-trato .ic{color:var(--cyan-400)}
+.log .t-reto .ic,.log .t-fin .ic{color:var(--oro)}
+.log .t-pausa .ic{color:var(--lavanda)}
+.log .t-lycan .ic{color:var(--magenta-400)}
+.log .t-bucle .ic{color:var(--violet-500)}
+.log .t-ejercicio .ic{color:var(--green-500)}
+.log .t-fin{padding:6px 8px;margin:0 -4px;border-radius:8px;background:rgba(255,201,77,.1);color:var(--ink-50)}
+.log .t-quiebra .lt{color:var(--ink-50)}
 .pie{display:flex;flex-wrap:wrap;gap:6px 16px;padding-top:4px;border-top:1px solid var(--ink-700)}
 .link{border:0;background:none;padding:6px 0;cursor:pointer;color:var(--ink-200);font-size:13.5px;text-decoration:underline;text-decoration-color:var(--ink-500);text-underline-offset:3px}
 .link:hover{color:var(--cyan-400)}
@@ -3171,6 +3205,115 @@ function htmlCasillasDe(pi){
   return html;
 }
 
+// ---------- bitácora ----------
+// Se guarda como frases (así viaja a los invitados y suena, ver SONIDOS_BITACORA); aquí se arma por turnos,
+// con un ícono por tipo de jugada, los dados dibujados, cada jugador en su color, el dinero en verde o rojo
+// y las casillas tocables, con el color de su módulo.
+const TIPOS_LOG = [
+  ['fin', /^Fin de la partida/], ['inicio', /^Empieza la partida/], ['quiebra', /quiebra/],
+  ['red', /desconectó|vuelve a la partida|Un bot juega/], ['dados', /\b(saca|tira) (dobles \()?\d y \d/],
+  ['otra', /tira otra vez|dobles por tercera vez/], ['trato', /trato|^Trato:/], ['pausa', /^Pausa activa para|responde «/],
+  ['lycan', /^Carta:|Idea de lycan|carta break/], ['reto', /reto/], ['ejercicio', /ejercicio|proyecto/],
+  ['compra', /(?<!no )\bcompra\b/], ['cobro', /\b(cobra|recibe|se lleva el bote)\b/], ['pago', /(?<!no )\b(paga|debe|pagar)\b/],
+  ['hipoteca', /hipotec/], ['bucle', /bucle/], ['mueve', /\b(cae en|pasa|llega|descansa|no compra)\b/],
+];
+const tipoLog = l => (TIPOS_LOG.find(([, re]) => re.test(l)) || ['info'])[0];
+const SVG_LOG = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICONOS_LOG = {
+  fin:SVG_LOG('<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3"/>'),
+  inicio:SVG_LOG('<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>'),
+  quiebra:SVG_LOG('<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>'),
+  red:SVG_LOG('<path d="M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19.5" r=".6"/>'),
+  otra:SVG_LOG('<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>'),
+  trato:SVG_LOG('<path d="M4 8h15l-4-4M20 16H5l4 4"/>'),
+  pausa:'<svg aria-hidden="true"><use href="#i-pausa"/></svg>',
+  lycan:'<svg aria-hidden="true"><use href="#lobo"/></svg>',
+  reto:SVG_LOG('<path d="M8 6l-6 6 6 6M16 6l6 6-6 6M14 4l-4 16"/>'),
+  ejercicio:'<svg aria-hidden="true"><use href="#i-barras"/></svg>',
+  compra:SVG_LOG('<path d="M3 12V3h9l9 9-9 9z"/><circle cx="7.5" cy="7.5" r="1.2"/>'),
+  cobro:SVG_LOG('<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>'),
+  pago:SVG_LOG('<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>'),
+  hipoteca:SVG_LOG('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'),
+  bucle:'<svg aria-hidden="true"><use href="#i-bucle"/></svg>',
+  mueve:SVG_LOG('<path d="M4 12h15M13 6l6 6-6 6"/>'),
+  info:SVG_LOG('<circle cx="12" cy="12" r="2.5"/>'),
+};
+const PUNTOS_DADO = {1:[[6,6]], 2:[[3.4,3.4],[8.6,8.6]], 3:[[3.4,3.4],[6,6],[8.6,8.6]], 4:[[3.4,3.4],[8.6,3.4],[3.4,8.6],[8.6,8.6]],
+  5:[[3.4,3.4],[8.6,3.4],[6,6],[3.4,8.6],[8.6,8.6]], 6:[[3.4,3.4],[8.6,3.4],[3.4,6],[8.6,6],[3.4,8.6],[8.6,8.6]]};
+const dadoMini = n => `<svg class="dm" viewBox="0 0 12 12" aria-hidden="true"><rect x=".5" y=".5" width="11" height="11" rx="2.6"/>${PUNTOS_DADO[n].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.25"/>`).join('')}</svg>`;
+
+// Lo que se resalta: los jugadores, en su color, y las casillas que se compran o cobran, tocables. Las demás
+// casillas también se buscan, para que el «lycan» de «Idea de lycan» no se pinte como el jugador.
+function marcasLog(){
+  const re = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const jug = G.jugadores.map((p, k) => [esc(p.nombre), k]);
+  const cas = CASILLAS.map((c, i) => c.n ? [esc(nom(c)), i] : null).filter(Boolean);
+  const todos = [...jug, ...cas].map(([n]) => n).sort((a, b) => b.length - a.length).map(re);
+  return {
+    re:new RegExp(`(?<![\\p{L}\\d])(${todos.join('|')})(?![\\p{L}\\d])|\\$\\d{1,3}(?:\\.\\d{3})*`, 'gu'),
+    jug:new Map(jug), cas:new Map(cas),
+  };
+}
+const CASILLAS_LOG = ['prop', 'curso', 'serv', 'impuesto', 'salida'];
+function textoLog(l, M, {casillas = true, jugadores = true} = {}){
+  return esc(l).replace(M.re, (t, nombre) => {
+    if (!nombre) return `<b class="din">${t}</b>`;
+    if (M.jug.has(nombre)) return jugadores ? `<b class="lj" style="--c:${G.jugadores[M.jug.get(nombre)].color}">${nombre}</b>` : nombre;
+    const i = M.cas.get(nombre), c = CASILLAS[i];
+    if (!casillas || !CASILLAS_LOG.includes(c.t)) return nombre;
+    const g = c.t === 'prop' ? GRUPOS[c.g].c : c.t === 'curso' ? 'var(--lavanda)' : c.t === 'serv' ? 'var(--ink-100)' : 'var(--red-500)';
+    return `<button type="button" class="lc" data-i="${i}" style="--g:${g}">${nombre}</button>`;
+  });
+}
+
+// Las frases, por turno: cada «Turno de…» abre un bloque. La ronda se cuenta hacia atrás desde la actual,
+// como en terminarTurno: empieza otra cada vez que el turno vuelve a un jugador anterior o al mismo.
+function turnosBitacora(){
+  const lineas = G.bitacora, antes = (G.nLog ?? lineas.length) - lineas.length;
+  const grupos = [];
+  let g = null;
+  lineas.forEach((l, k) => {
+    const t = l.match(/^Turno de (.+?)(, atrapado en el bucle)?\.$/);
+    if (t || !g){
+      g = {j:t ? G.jugadores.findIndex(p => p.nombre === t[1]) : -1, preso:!!(t && t[2]), cabeza:!!t, lineas:[]};
+      grupos.push(g);
+    }
+    if (!t) g.lineas.push({l, n:antes + k + 1});
+  });
+  if (antes > 0 && grupos.length && !grupos[0].cabeza) grupos.shift();   // un turno cortado: la bitácora guarda solo 150 frases
+  let r = G.ronda;
+  for (let k = grupos.length - 1; k >= 0; k--){
+    grupos[k].ronda = r;
+    const a = grupos[k - 1], b = grupos[k];
+    if (a && a.j >= 0 && b.j >= 0 && b.j <= a.j) r = Math.max(1, r - 1);
+  }
+  return grupos;
+}
+
+function htmlBitacora(){
+  const total = G.nLog ?? G.bitacora.length;
+  const visto = UI.logVisto === undefined || UI.logVisto > total ? total : UI.logVisto;
+  UI.logVisto = total;
+  const M = marcasLog(), grupos = turnosBitacora().slice(-16).reverse();
+  let html = '', ronda = null;
+  grupos.forEach((g, k) => {
+    if (g.cabeza && g.ronda !== ronda){ html += `<li class="lr">ronda ${g.ronda}</li>`; ronda = g.ronda; }
+    const p = G.jugadores[g.j];
+    const filas = g.lineas.map(({l, n}) => {
+      const tipo = tipoLog(l);
+      // bajo el nombre del jugador, sus frases empiezan por lo que hizo: «saca 4 y 2», «compra…»
+      const propia = p && l.startsWith(p.nombre + ' ') ? l.slice(p.nombre.length + 1) : l;
+      const d = tipo === 'dados' && l.match(/(\d) y (\d)/);
+      const ic = d ? dadoMini(+d[1]) + dadoMini(+d[2]) : ICONOS_LOG[tipo] || ICONOS_LOG.info;
+      return `<li class="le t-${tipo}${n > visto ? ' nueva' : ''}"><span class="ic">${ic}</span><span class="lt">${textoLog(propia, M, {casillas:tipo !== 'pausa', jugadores:!l.startsWith('Carta:')})}</span></li>`;
+    }).join('');
+    const vacio = !filas && k === 0 ? '<li class="le"><span class="ic"></span><span class="lt vacio-t">empieza su turno</span></li>' : '';
+    const cabeza = p ? `<div class="lgc">${fichaMini(p)}<span>${esc(p.nombre)}</span>${g.preso ? '<span class="chip bucle">en el bucle</span>' : ''}</div>` : '';
+    html += `<li class="lg${k === 0 && G.fase !== 'final' ? ' ahora' : ''}"${p ? ` style="--c:${p.color}"` : ''}>${cabeza}<ol>${filas}${vacio}</ol></li>`;
+  });
+  return html;
+}
+
 function htmlJuego(){
   const ver = UI.ver ?? G.turno, pv = G.jugadores[ver];
   const filas = G.jugadores.map((p, k) => {
@@ -3190,13 +3333,12 @@ function htmlJuego(){
       <span class="plata ${anim}">${money(p.dinero)}</span></li>`;
   }).join('');
   const negociar = ver === G.turno && puedeGestionar() && ['tirar', 'bucle', 'fin', 'deuda'].includes(G.fase) && vivos().length > 1;
-  const log = G.bitacora.slice(-60).reverse().map(l => `<li>${esc(l)}</li>`).join('');
   const titulo = ver === G.turno && esMio(ver) ? `// casillas de ${pv.nombre} (tu turno)` : `// casillas de ${pv.nombre}`;
   return `<header class="ph"><svg><use href="#lobo"/></svg><div><h2>Lycanópolis</h2><p>// ${enLinea() ? `sala ${RED.sala} · ` : ''}${nom({n:CURSOS[TEMA].corto})} · ronda ${G.ronda} · partida ${G.opc.modo === 'clasica' ? 'clásica' : 'corta'}${G.opc.bote ? ` · bote ${money(G.bote)}` : ''}</p></div>${htmlSonido()}</header>
     ${enLinea() && RED.msg ? `<p class="aviso-red">${esc(RED.msg)}${soyInvitado() && RED.estado === 'perdida' ? ' <button type="button" class="link" data-a="reentrar">Volver a entrar</button>' : ''}</p>` : ''}
     <section><h3>// jugadores</h3><ol class="jug">${filas}</ol></section>
     <section><h3>${esc(titulo)}</h3>${htmlCasillasDe(ver)}${negociar ? '<div style="margin-top:12px"><button type="button" class="btn ghost sm" data-a="negociar">Negociar con otro jugador</button></div>' : ''}</section>
-    <section><h3>// bitácora</h3><ol class="log">${log}</ol></section>
+    <section><h3>// bitácora</h3><ol class="log">${htmlBitacora()}</ol></section>
     <footer class="pie"><button type="button" class="link" data-a="reglas">Cómo se juega</button>${soyInvitado() ? '<button type="button" class="link" data-a="salirSala">Salir de la sala</button>' : '<button type="button" class="link" data-a="nueva">Nueva partida</button>'}${G.fase === 'final' ? '<button type="button" class="link" data-a="verFinal">Resultados</button>' : soyInvitado() ? '' : '<button type="button" class="link peligro" data-a="terminarYa">Terminar ahora</button>'}${htmlCanal()}</footer>`;
 }
 
