@@ -83,6 +83,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--cyan-500);outli
 .pr{font-family:var(--font-display);font-weight:600;font-size:1.3cqi;color:var(--ink-200);line-height:1;font-variant-numeric:tabular-nums}
 .sq .ic{width:3.3cqi;height:3.3cqi;flex:0 0 auto}
 .t-curso .ic{color:var(--lavanda);filter:drop-shadow(0 0 4px rgba(196,177,255,.6))}
+.t-curso .ic.not{width:auto;height:auto;font-family:var(--font-mono);font-weight:500;font-size:2.1cqi;line-height:1;white-space:nowrap;filter:none;text-shadow:0 0 6px rgba(196,177,255,.65)}
 .t-curso .nm{color:var(--lavanda)}
 .t-serv .ic{color:var(--ink-50);filter:drop-shadow(0 0 4px rgba(214,223,240,.45))}
 .t-impuesto .ic{color:var(--ink-200)}
@@ -206,6 +207,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--cyan-500);outli
   .t-impuesto .pr{font-size:1.7cqi}
   .sq .ic{width:4.6cqi;height:4.6cqi}
   .t-lycan .ic{width:5cqi;height:5cqi}
+  .t-curso .ic.not{width:auto;height:auto;font-size:2.5cqi}
   .esq .el{font-size:1.85cqi}
   .carcel .celda-b .el{font-size:1.55cqi}
   .body{padding:8% 4%}
@@ -682,23 +684,32 @@ const TEMAS = {
       ['041', 'Construc­ción en vivo', 'El proyecto final, de cero a terminado'],
       ['042', 'Soluciones de la comunidad', 'El cierre de la serie'],
     ],
+    // Las cuatro estaciones no son los otros cursos, sino complejidades: de la que menos crece a la que más.
+    estaciones:[
+      {n:'O(1)', corto:'Constante', not:true, sub:'Lo que no crece con los datos: ir directo a lista[i] o buscar en un diccionario.'},
+      {n:'O(log n)', corto:'Logarítmica', not:true, sub:'Partir a la mitad una y otra vez: la búsqueda binaria encuentra un dato entre un millón en unos 20 pasos.'},
+      {n:'O(n)', corto:'Lineal', not:true, sub:'Revisar uno por uno: si los datos se duplican, el trabajo también.'},
+      {n:'O(n²)', corto:'Cuadrática', not:true, sub:'Comparar todos contra todos, como el ordenamiento burbuja: el doble de datos es cuatro veces el trabajo.'},
+    ],
     lycan:[
-      {de:'ep. 040 · Planteamiento del proyecto', q:'Un proyecto empieza abriendo el editor y escribiendo código.', por:'Sin un plan peleas dos batallas a la vez: entender el problema y escribir Python. Primero se planea.', t:'Empieza por el principio: avanza hasta Comienza el bucle y cobra $200.'},
-      {de:'ep. 026 · Backtracking', q:'Backtracking es probar todo a lo bruto.', por:'En un laberinto no pruebas todos los caminos: abandonas cada uno en cuanto choca con una pared.', t:'Avanza hasta {24} y míralo con calma. Si pasas por la salida, cobra $200.'},
-      {de:'ep. 010 · Pilas', q:'Para deshacer, el programa guarda una copia completa del documento cada vez que escribes.', por:'Copiar un documento de 100 páginas en cada tecla sería carísimo: basta con apilar cada acción, en orden, y sacar la de arriba.', t:'Avanza hasta {11}. Si pasas por la salida, cobra $200.'},
-      {de:'ep. 042 · Soluciones de la comunidad', q:'Terminar el curso es saber algoritmos.', por:'Las mejores soluciones no salieron de recordar el curso, sino de practicarlo.', t:'Avanza hasta {39}.'},
-      {de:'Estadística con Pokémon GO · ep. 016', q:'Llevo 800 sin shiny: me toca. El juego me debe uno.', por:'El juego no recuerda nada: después de una racha de 500 sin shiny, la probabilidad sigue siendo 1 entre 500.', t:CERCA_CURSO},
-      {de:'Física Mecánica Computacional · ep. 007', q:'Lo pesado cae más rápido: la gravedad lo jala con más fuerza.', por:'En la Luna, sin aire, un astronauta soltó a la vez un martillo y una pluma, y tocaron el suelo juntos.', t:CERCA_CURSO},
-      {de:'ep. 005 · ¿Por qué tu programa se vuelve lento?', q:'Si tu programa es lento, cómprate una computadora más rápida.', por:'Una computadora 10 veces más rápida baja de 7,5 horas a 45 minutos; un algoritmo mejor, en la computadora vieja, lo hace en 0,03 segundos.', t:CERCA_SERV},
-      {de:'ep. 016 · Ordenamiento burbuja', q:'Si un algoritmo ordena bien, da igual cuál uses.', por:'Los dos ordenan bien, pero con muchos datos uno tarda 0,02 segundos y el otro 15 minutos.', t:'Elegiste el método rápido: cobra $50.'},
+      // Cada carta es la idea equivocada de un episodio (de su guion) y lo que hace sale de esa idea: ir al episodio
+      // o a la complejidad que la desmiente, o pagar lo que cuesta creerla. Nada premia la idea equivocada.
+      {de:'ep. 040 · Planteamiento del proyecto', q:'Un proyecto empieza abriendo el editor y escribiendo código.', por:'Sin un plan peleas dos batallas a la vez: entender el problema y escribir Python. Primero se planea.', t:'Empieza por el principio: avanza hasta Comienza el bucle y cobra $200.', a:{ir:0}},
+      {de:'ep. 026 · Backtracking', q:'Backtracking es probar todo a lo bruto.', por:'En un laberinto no pruebas todos los caminos: abandonas cada uno en cuanto choca con una pared.', t:'Avanza hasta {24} y míralo con calma. Si pasas por la salida, cobra $200.', a:{ir:24}},
+      {de:'ep. 010 · Pilas', q:'Para deshacer, el programa guarda una copia completa del documento cada vez que escribes.', por:'Copiar un documento de 100 páginas en cada tecla sería carísimo: basta con apilar cada acción, en orden, y sacar la de arriba.', t:'Avanza hasta {11}. Si pasas por la salida, cobra $200.', a:{ir:11}},
+      {de:'ep. 015 · Búsqueda binaria', q:'La computadora es tan rápida que da igual buscar de uno en uno.', por:'En una lista de mil millones, buscar de uno en uno puede tardar mil millones de pasos; partiendo a la mitad, unos 30.', t:'Avanza hasta {16}: partir a la mitad gana siempre. Si pasas por la salida, cobra $200.', a:{ir:16}},
+      {de:'ep. 006 · Notación Big O', q:'Big O te dice cuántos segundos tarda tu programa.', por:'Un for que suma y sum() son los dos O(n), y uno tarda casi el doble que el otro: Big O no habla de segundos, sino de cómo crece el trabajo.', t:'Big O no es un cronómetro: avanza hasta la complejidad más cercana. Si tiene dueño, le pagas el doble; si está libre, puedes comprarla.', a:{cerca:'curso'}},
+      {de:'ep. 009 · Listas en Python', q:'Una lista es una lista: agregar, sacar o buscar cuesta lo mismo.', por:'Agregar 100.000 datos al final tarda 8 milésimas; al principio, 2,4 segundos: hay que correr a todos un casillero.', t:'Cada operación tiene su costo: avanza hasta la complejidad más cercana. Si tiene dueño, le pagas el doble; si está libre, puedes comprarla.', a:{cerca:'curso'}},
+      {de:'ep. 005 · ¿Por qué tu programa se vuelve lento?', q:'Si tu programa es lento, cómprate una computadora más rápida.', por:'Una computadora 10 veces más rápida baja de 7,5 horas a 45 minutos; un algoritmo mejor, en la computadora vieja, lo hace en 0,03 segundos.', t:'El arreglo está en el algoritmo, no en la máquina: avanza hasta Papel y lápiz o Python, el más cercano. Si tiene dueño, tira los dados y paga 10 veces lo que salga.', a:{cerca:'serv'}},
+      {de:'ep. 016 · Ordenamiento burbuja', q:'Si un algoritmo ordena bien, da igual cuál uses.', por:'Los dos ordenan bien, pero con muchos datos uno tarda 0,02 segundos y el otro 15 minutos.', t:'Elegiste burbuja con muchos datos: paga $50 por la espera.', a:{dinero:-50}},
       CARTA_BREAK,
-      {de:'ep. 035 · Cuando lo voraz falla', q:'Si lo voraz funcionó con unas monedas, funciona con todas.', por:'Con monedas de 1, 5, 6 y 9, tomar siempre la más grande paga 11 con tres monedas (9 + 1 + 1); se puede con dos (6 + 5).', t:'No siempre. Retrocede 3 casillas.'},
-      {de:'ep. 022 · Recursión sin miedo', q:'Recursión es una función que se llama a sí misma, y ya.', por:'Una función que solo se llama a sí misma nunca termina: le falta un caso base que la detenga.', t:'Sin caso base no termina nunca: ve directo al bucle infinito, sin pasar por la salida.'},
-      {de:'Arquitectura de Software · ep. 037', q:'Este código ya no tiene arreglo: hay que reescribirlo desde cero.', por:'Mientras reescribes, siguen llegando cambios al sistema viejo: el nuevo persigue un blanco que se mueve.', t:'Mejor arreglarlo por partes: paga $25 por cada ejercicio y $100 por cada proyecto.'},
-      {de:'ep. 019 · Quick sort', q:'Quick sort siempre es el más rápido; lo dice su nombre.', por:'Si el pivote es el primero y la lista ya está ordenada, con 1.000 datos hace unas 500.000 comparaciones; con el pivote al azar, unas 11.000.', t:'Multa por creerle al nombre: paga $15.'},
-      {de:'Estadística con Pokémon GO · ep. 012', q:'Con unos pocos encuentros ya sabes la tasa.', por:'Con 10 encuentros cada uno, casi todos los entrenadores estiman 0 shinies: la tasa solo se ve con miles.', t:'Viaja a {5} y junta más datos. Si pasas por la salida, cobra $200.'},
-      {de:'ep. 034 · Algoritmos voraces', q:'Para encontrar la mejor combinación hay que probar todas.', por:'Para dar el cambio con monedas normales basta tomar siempre la más grande que quepa: da el mínimo sin probar nada más.', t:'Probarlas todas sale caro: paga $50 a cada jugador.'},
-      {de:'ep. 036 · Memoización', q:'La programación dinámica es una técnica avanzadísima, solo para genios.', por:'La idea cabe en una frase: no calcules dos veces lo mismo; apunta el resultado.', t:'Apuntar para no repetir te ahorra trabajo: cobra $150.'},
+      {de:'ep. 035 · Cuando lo voraz falla', q:'Si lo voraz funcionó con unas monedas, funciona con todas.', por:'Con monedas de 1, 5, 6 y 9, tomar siempre la más grande paga 11 con tres monedas (9 + 1 + 1); se puede con dos (6 + 5).', t:'No siempre. Retrocede 3 casillas.', a:{atras:3}},
+      {de:'ep. 022 · Recursión sin miedo', q:'Recursión es una función que se llama a sí misma, y ya.', por:'Una función que solo se llama a sí misma nunca termina: le falta un caso base que la detenga.', t:'Sin caso base no termina nunca: ve directo al bucle infinito, sin pasar por la salida.', a:{bucle:1}},
+      {de:'ep. 002 · Pseudocódigo y diagramas de flujo', q:'Planear es perder el tiempo: los buenos programadores escriben código directo.', por:'Al programar directo cómo cruzar una calle, a la primera línea surgen dudas que no son de Python: ¿qué semáforo?, ¿y si parpadea? Es pelear dos batallas a la vez.', t:'Sin plan, toca rehacer: paga $25 por cada ejercicio y $100 por cada proyecto que tengas.', a:{arreglo:[25, 100]}},
+      {de:'ep. 019 · Quick sort', q:'Quick sort siempre es el más rápido; lo dice su nombre.', por:'Si el pivote es el primero y la lista ya está ordenada, con 1.000 datos hace unas 500.000 comparaciones; con el pivote al azar, unas 11.000.', t:'Multa por creerle al nombre: paga $15.', a:{dinero:-15}},
+      {de:'ep. 012 · Diccionarios y conjuntos', q:'El conjunto busca igual que la lista, uno por uno; solo que muy rápido.', por:'Si buscara uno por uno, con más datos tardaría más; con mil, un millón o diez millones, tarda lo mismo: unos 112 nanosegundos.', t:'Viaja hasta {5}: un conjunto encuentra de un vistazo. Si pasas por la salida, cobra $200.', a:{ir:5}},
+      {de:'ep. 034 · Algoritmos voraces', q:'Para encontrar la mejor combinación hay que probar todas.', por:'Para dar el cambio con monedas normales basta tomar siempre la más grande que quepa: da el mínimo sin probar nada más.', t:'Probarlas todas sale caro: paga $50 a cada jugador.', a:{cada:-50}},
+      {de:'ep. 036 · Memoización', q:'La programación dinámica es una técnica avanzadísima, solo para genios.', por:'La idea cabe en una frase: no calcules dos veces lo mismo; apunta el resultado.', t:'Apuntar para no repetir te ahorra trabajo: cobra $150.', a:{dinero:150}},
     ],
     preguntas:[
       {ep:'001', de:'¿Qué es un algoritmo?', q:'Grabaste 100.000 minutos de partido y el gol está en el último. Partiendo la grabación a la mitad una y otra vez, ¿cuántos vistazos necesitas?', ops:['17', '1.000', '50.000'], por:'Cada vistazo descarta la mitad, y 2¹⁷ ya pasa de 100.000. Minuto a minuto serían 100.000.'},
@@ -986,16 +997,20 @@ function aplicarTema(id){
   let e = 0, s = 0;
   CASILLAS = BASE.map(b => {
     if (b.t === 'prop'){ const [ep, n, sub] = T.eps[e++]; return {...b, ep, n, sub}; }
-    if (b.t === 'curso'){ const c = CURSOS[otros[s++]]; return {...b, n:c.n, corto:c.corto, ic:c.ic}; }
+    if (b.t === 'curso'){ const c = T.estaciones ? T.estaciones[s++] : CURSOS[otros[s++]]; return {...b, ...c}; }
     return b;
   });
   Object.keys(GRUPOS).forEach((g, k) => GRUPOS[g].n = T.modulos[k]);
   PREGUNTAS = T.preguntas;
-  LYCAN = T.lycan.map((c, k) => ({...c, t:c.t.replace(/\{(\d+)\}/g, (_, i) => nom(CASILLAS[+i])), a:JUGADAS_LYCAN[k]}));
+  LYCAN = T.lycan.map((c, k) => ({...c, t:c.t.replace(/\{(\d+)\}/g, (_, i) => nom(CASILLAS[+i])), a:c.a || JUGADAS_LYCAN[k]}));
   TEMA = id;
 }
 
 const BREAK = {lycan:8};
+// Cómo se llaman las cuatro estaciones: los otros cursos del canal o, en la edición que trae las suyas, esas.
+const ESTACION = () => TEMAS[TEMA].estaciones
+  ? {una:'complejidad', varias:'complejidades', las:'las', titulo:'Complejidades'}
+  : {una:'curso', varias:'cursos', las:'los', titulo:'Cursos'};
 
 const COLORES = ['#22D3FF','#FF2E9A','#3CF0A5','#FFC94D','#A78BFA','#FF9640'];
 const FICHAS = [
@@ -2908,6 +2923,7 @@ function htmlCasilla(c, i){
     dentro = `<span class="band" style="--g:${GRUPOS[c.g].c}"></span><span class="body"><span class="ep"><i>ep.</i>${c.ep}</span><span class="nm">${c.n}</span><span class="pr">${money(c.precio)}</span></span>`;
   } else {
     const ic = c.t === 'lycan' ? '<svg class="ic"><use href="#lobo"/></svg>'
+             : c.not ? `<span class="ic not">${c.n}</span>`
              : `<svg class="ic"><use href="#i-${c.t === 'pausa' ? 'pausa' : c.ic}"/></svg>`;
     const pie = c.t === 'impuesto' ? `paga ${money(c.monto)}` : c.precio ? money(c.precio) : '';
     dentro = `<span class="body"><span class="nm">${c.corto || c.n}</span>${ic}<span class="pr">${pie}</span></span>`;
@@ -2993,7 +3009,7 @@ async function rodarDados(d){
 function miniTitulo(i){
   const c = CASILLAS[i];
   const color = c.t === 'prop' ? GRUPOS[c.g].c : c.t === 'curso' ? 'var(--lavanda)' : 'var(--ink-100)';
-  const r = c.t === 'prop' ? `renta ${money(c.renta[0])} · ep. ${c.ep}` : c.t === 'curso' ? 'curso · renta desde $25' : 'renta: 4 × los dados';
+  const r = c.t === 'prop' ? `renta ${money(c.renta[0])} · ep. ${c.ep}` : c.t === 'curso' ? `${ESTACION().una} · renta desde $25` : 'renta: 4 × los dados';
   return `<button type="button" class="mini-tit" data-i="${i}" style="--g:${color}"><span class="b"></span><span class="n">${nom(c)}</span><span class="r">${r}</span></button>`;
 }
 
@@ -3098,7 +3114,7 @@ function htmlCasillasDe(pi){
   if (!mias.length) return `<p class="vacio">${pi === G.turno && esMio(pi) ? 'Todavía no tienes casillas.' : `${esc(p.nombre)} todavía no tiene casillas.`}</p>`;
   const bloques = [
     ...Object.keys(GRUPOS).map(g => ({clave:g, titulo:`Módulo ${GRUPOS[g].k} · ${GRUPOS[g].n}`, color:GRUPOS[g].c, ps:DEL_GRUPO[g]})),
-    {clave:'curso', titulo:'Cursos', color:'var(--lavanda)', ps:CASILLAS.map((c, i) => c.t === 'curso' ? i : -1).filter(i => i >= 0)},
+    {clave:'curso', titulo:ESTACION().titulo, color:'var(--lavanda)', ps:CASILLAS.map((c, i) => c.t === 'curso' ? i : -1).filter(i => i >= 0)},
     {clave:'serv', titulo:'Papel y lápiz y Python', color:'var(--ink-100)', ps:[12, 28]},
   ];
   let html = '';
@@ -3204,8 +3220,11 @@ function htmlTitulo(i){
     if (d && !d.m) ahora = d.h ? d.h + 1 : tieneGrupo(d.o, c.g) ? 1 : 0;
     letra = `${TEMA === 'algoritmos' && RETOS[c.ep] ? `Su reto: ${RETOS[c.ep].sorpresa ? 'uno sorpresa' : RETOS[c.ep].titulo.toLowerCase()}. ` : ''}Módulo ${g.k}: ${g.n}. Cada ejercicio cuesta ${money(g.casa)}; con cuatro, uno más lo convierte en proyecto. Si la hipotecas, recibes ${money(c.precio / 2)}.`;
   } else if (c.t === 'curso'){
-    cab = `<div class="cab oscura" style="--g:var(--lavanda)"><svg class="ic"><use href="#i-${c.ic}"/></svg><p class="rot">// curso del canal</p><h2>${c.n}</h2></div>`;
-    filas = [['Con 1 curso', '$25'], ['Con 2 cursos', '$50'], ['Con 3 cursos', '$100'], ['Con los 4', '$200']];
+    const E = ESTACION();
+    cab = c.not
+      ? `<div class="cab oscura" style="--g:var(--lavanda)"><p class="rot">// complejidad ${esc(c.corto.toLowerCase())}</p><h2>${c.n}</h2><p>${esc(c.sub)}</p></div>`
+      : `<div class="cab oscura" style="--g:var(--lavanda)"><svg class="ic"><use href="#i-${c.ic}"/></svg><p class="rot">// curso del canal</p><h2>${c.n}</h2></div>`;
+    filas = [[`Con 1 ${E.una}`, '$25'], [`Con 2 ${E.varias}`, '$50'], [`Con 3 ${E.varias}`, '$100'], [`Con ${E.las} 4`, '$200']];
     if (d && !d.m) ahora = cuantos(d.o, 'curso') - 1;
     letra = `Si lo hipotecas, recibes ${money(100)}.`;
   } else if (c.t === 'serv'){
@@ -3249,7 +3268,9 @@ function htmlReglas(){
     </ol>
     <h3>// el tablero</h3>
     <ul>
-      <li><b>Cursos:</b> las cuatro estaciones son los otros cursos del canal. Con uno cobras $25; con dos, $50; con tres, $100, y con los cuatro, $200.</li>
+      <li>${TEMAS[TEMA].estaciones
+        ? `<b>Complejidades:</b> las cuatro estaciones son ${TEMAS[TEMA].estaciones.map(e => e.n).join(', ').replace(/, ([^,]*)$/, ' y $1')}, de la que menos crece a la que más. Con una cobras $25; con dos, $50; con tres, $100, y con las cuatro, $200.`
+        : '<b>Cursos:</b> las cuatro estaciones son los otros cursos del canal. Con uno cobras $25; con dos, $50; con tres, $100, y con los cuatro, $200.'}</li>
       <li><b>Papel y lápiz y Python:</b> primero se piensa, después se programa. Quien cae paga 4 veces lo que sacó en los dados, o 10 veces si el dueño tiene los dos.</li>
       <li><b>Un bug y Error de redondeo:</b> los impuestos.</li>
       <li><b>Bucle infinito:</b> la cárcel. Sales si sacas dobles, si pagas ${money(50)} o con una carta break. Al tercer intento sin dobles pagas y sales.</li>
