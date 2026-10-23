@@ -494,6 +494,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--cyan-500);outli
 /* final */
 .final .gana{display:flex;align-items:center;gap:14px;margin-bottom:6px}
 .final .gana .ficha-mini{width:52px;height:52px;border-width:3px}
+.juntar .juntar-lista{margin:12px 0 0;max-height:min(46vh,360px);overflow:auto;border-top:1px solid var(--ink-700)}
+.juntar .hold .hn{cursor:default}
 .final .rank{list-style:none;padding:0;margin:14px 0 0;display:grid;gap:6px}
 .final .rank li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;margin:0}
 .final .rank .plata{font-size:16px}
@@ -1338,7 +1340,7 @@ function pagar(p, monto, a){
 function cobrar(p, monto, a, sigue){
   if (monto <= 0) return seguir(sigue);
   if (p.dinero >= monto){ pagar(p, monto, a); return seguir(sigue); }
-  G.deuda = {monto, a, sigue};
+  G.deuda = {monto, a, sigue, n:(G.nDeudas = (G.nDeudas || 0) + 1)};
   G.fase = 'deuda';
   anotar(`${p.nombre} debe ${money(monto)} y tiene ${money(p.dinero)}: le toca deshacer ejercicios o hipotecar casillas.`);
 }
@@ -1521,6 +1523,7 @@ function motivoNoEjercicio(i){
   if (gp.some(j => G.due[j].m)) return 'Hay un episodio del módulo hipotecado';
   if (o.h >= 5) return 'Ya es un proyecto';
   if (o.h > Math.min(...gp.map(j => G.due[j].h))) return 'Parejo: primero los otros episodios del módulo';
+  if (G.fase === 'deuda') return 'Primero paga lo que debes';
   if (G.jugadores[pi].dinero < GRUPOS[c.g].casa) return 'No te alcanza';
   return '';
 }
@@ -1562,7 +1565,7 @@ function hipotecar(i, callado){
 }
 function recuperar(i){
   const o = G.due[i], c = CASILLAS[i], p = cur(), k = costoRecuperar(i);
-  if (!o || !o.m || o.o !== G.turno || p.dinero < k) return;
+  if (!o || !o.m || o.o !== G.turno || p.dinero < k || G.fase === 'deuda') return;
   p.dinero -= k; o.m = false;
   anotar(`${p.nombre} levanta la hipoteca de ${nom(c)} por ${money(k)}.`);
 }
@@ -3313,8 +3316,14 @@ function pintarMesa(){
       botones = `<button class="btn go" data-a="terminarTurno">Terminar turno</button>`;
       break;
     case 'deuda': {
-      const d = G.deuda, puede = liquidez(G.turno) >= d.monto;
-      botones = `<p class="nota">${puede ? 'Deshaz ejercicios o hipoteca casillas en el panel hasta juntarlo.' : `Aunque vendas todo, juntarías ${money(liquidez(G.turno))}.`}</p><div class="fila"><button class="btn go" data-a="pagarDeuda" ${p.dinero < d.monto ? 'disabled' : ''}>Pagar ${money(d.monto)}</button><button class="btn alt" data-a="quiebra">Declararme en quiebra</button></div>`;
+      // Antes de quebrar se puede juntar el dinero (ventana «juntar»); la quiebra se confirma, porque no tiene vuelta.
+      const d = G.deuda, falta = d.monto - p.dinero, seguro = UI.confirmaQuiebra === d.n;
+      const nota = seguro ? 'Si quiebras, sales de la partida y pierdes tus casillas. ¿Seguro?'
+        : falta > 0 ? `Te faltan ${money(falta)}: hipoteca casillas, deshaz ejercicios o véndele casillas a otro jugador.` : 'Ya juntaste lo que debes.';
+      const quebrar = seguro
+        ? '<button class="btn alt" data-a="quiebra">Sí, me declaro en quiebra</button><button class="btn ghost" data-a="noQuiebra">No, sigo</button>'
+        : '<button class="btn ghost" data-a="preguntarQuiebra">Declararme en quiebra</button>';
+      botones = `<p class="nota">${nota}</p><div class="fila">${seguro ? '' : `<button class="btn go" data-a="pagarDeuda" ${falta > 0 ? 'disabled' : ''}>Pagar ${money(d.monto)}</button>${falta > 0 ? '<button class="btn" data-a="juntar">Juntar el dinero</button>' : ''}`}${quebrar}</div>`;
       break;
     }
   }
@@ -3361,6 +3370,30 @@ function htmlSetup(){
     <footer class="pie"><button type="button" class="link" data-a="reglas">Cómo se juega</button>${htmlCanal()}</footer>`;
 }
 
+// Cuando no alcanza para pagar: las casillas del que debe, con lo que da hipotecar cada una o deshacer sus ejercicios,
+// y vender a otro jugador, que puede pagar más que la hipoteca.
+function htmlJuntar(){
+  const pi = G.turno, p = G.jugadores[pi], d = G.deuda, falta = Math.max(0, d.monto - p.dinero), junta = liquidez(pi);
+  const a = typeof d.a === 'number' ? G.jugadores[d.a].nombre : null;
+  const filas = deJugador(pi).map(i => {
+    const c = CASILLAS[i], o = G.due[i];
+    let ops = '';
+    if (o.h) ops += `<button type="button" class="mini" data-a="quitarEjercicio" data-i="${i}" ${sePuedeQuitar(i) ? '' : 'disabled title="Parejo: primero los que tienen más"'}>− ${o.h === 5 ? 'proyecto' : 'ejercicio'} +${money(GRUPOS[c.g].casa / 2)}</button>`;
+    if (!o.m) ops += `<button type="button" class="mini" data-a="hipoteca" data-i="${i}" ${sePuedeHipotecar(i) ? '' : 'disabled title="Primero deshaz los ejercicios del módulo"'}>Hipotecar +${money(c.precio / 2)}</button>`;
+    const marcas = o.h === 5 ? ' · proyecto' : o.h ? ` · ${o.h} ${o.h === 1 ? 'ejercicio' : 'ejercicios'}` : '';
+    return `<div class="hold ${o.m ? 'hip' : ''}"><span class="hn">${nom(c)}<small>${o.m ? 'hipotecada' : ''}${marcas}</small></span>${ops ? `<span class="ops">${ops}</span>` : ''}</div>`;
+  }).join('');
+  const nota = falta === 0 ? 'Ya juntaste lo que debes: paga y sigue jugando.'
+    : junta >= d.monto ? 'Hipoteca casillas o deshaz ejercicios hasta juntarlo. Lo hipotecado lo puedes recuperar después.'
+    : `Hipotecándolo todo juntarías ${money(junta)}: no alcanza. Véndele casillas a otro jugador, que te puede pagar más que la hipoteca, o declárate en quiebra.`;
+  return `<div class="ventana juntar" role="dialog" aria-modal="true" aria-labelledby="juntar-t">
+    <h2 id="juntar-t">${falta ? `Te faltan ${money(falta)}` : 'Ya puedes pagar'}</h2>
+    <p>Debes ${money(d.monto)}${a ? ` a ${esc(a)}` : ''} y tienes ${money(p.dinero)}. ${nota}</p>
+    ${filas ? `<div class="juntar-lista">${filas}</div>` : '<p class="vacio">No tienes casillas.</p>'}
+    <div class="cerrar-fila"><button type="button" class="link" data-a="cerrar">Cerrar</button>${vivos().length > 1 ? '<button type="button" class="btn ghost sm" data-a="negociar">Vender a otro jugador</button>' : ''}<button type="button" class="btn go sm" data-a="pagarDeuda" ${falta ? 'disabled' : ''}>Pagar ${money(d.monto)}</button></div>
+  </div>`;
+}
+
 function htmlCasillasDe(pi){
   const p = G.jugadores[pi], mias = deJugador(pi);
   const gestiona = pi === G.turno && puedeGestionar();
@@ -3385,7 +3418,7 @@ function htmlCasillasDe(pi){
           if (o.h < 5) ops += `<button type="button" class="mini" data-a="ejercicio" data-i="${i}" ${motivo ? `disabled title="${esc(motivo)}"` : ''}>${o.h === 4 ? 'Proyecto' : '+ ejercicio'} ${money(casa)}</button>`;
           if (o.h) ops += `<button type="button" class="mini" data-a="quitarEjercicio" data-i="${i}" ${sePuedeQuitar(i) ? '' : 'disabled title="Parejo: primero los que tienen más"'}>− ejercicio +${money(casa / 2)}</button>`;
         }
-        if (o.m) ops += `<button type="button" class="mini" data-a="recuperar" data-i="${i}" ${p.dinero < costoRecuperar(i) ? 'disabled title="No te alcanza"' : ''}>Recuperar ${money(costoRecuperar(i))}</button>`;
+        if (o.m) ops += `<button type="button" class="mini" data-a="recuperar" data-i="${i}" ${G.fase === 'deuda' ? 'disabled title="Primero paga lo que debes"' : p.dinero < costoRecuperar(i) ? 'disabled title="No te alcanza"' : ''}>Recuperar ${money(costoRecuperar(i))}</button>`;
         else ops += `<button type="button" class="mini" data-a="hipoteca" data-i="${i}" ${sePuedeHipotecar(i) ? '' : 'disabled title="Primero deshaz los ejercicios del módulo"'}>Hipotecar +${money(c.precio / 2)}</button>`;
       }
       html += `<div class="hold ${o.m ? 'hip' : ''}"><button type="button" class="hn" data-i="${i}">${nom(c)}<small>${o.m ? 'hipotecada' : ''}${marcas}</small></button>${ops ? `<span class="ops">${ops}</span>` : ''}</div>`;
@@ -3717,6 +3750,11 @@ function htmlTerminarYa(){
 
 function pintarVentana(forzar){
   const raiz = $('#ventana');
+  if (G && G.fase === 'deuda' && G.deuda && UI.vista === 'juego' && esMio(G.turno) && UI.deudaVista !== G.deuda.n){
+    UI.deudaVista = G.deuda.n;
+    UI.ventana = {t:'juntar'};
+  }
+  if (UI.ventana && UI.ventana.t === 'juntar' && !(G && G.fase === 'deuda' && G.deuda && esMio(G.turno))) UI.ventana = null;
   let html = '';
   let clave = '', familia = '';
   if (G && G.fase === 'carta' && G.carta && UI.vista === 'juego'){
@@ -3740,7 +3778,7 @@ function pintarVentana(forzar){
     const v = UI.ventana;
     clave = familia = v.t + (v.i ?? '') + (v.para ?? '');
     if (v.t === 'trato' && raiz.dataset.clave === clave && !forzar) return;
-    html = v.t === 'titulo' ? htmlTitulo(v.i) : v.t === 'reglas' ? htmlReglas() : v.t === 'trato' ? htmlTrato()
+    html = v.t === 'titulo' ? htmlTitulo(v.i) : v.t === 'reglas' ? htmlReglas() : v.t === 'trato' ? htmlTrato() : v.t === 'juntar' ? htmlJuntar()
          : v.t === 'final' && G && G.ranking ? htmlFinal() : v.t === 'terminarYa' ? htmlTerminarYa() : '';
   }
   // La misma ventana con contenido nuevo (una jugada del reto, una respuesta): se cambia por dentro,
@@ -3789,11 +3827,14 @@ const ACCIONES = {
   usarCarta:() => accion(usarCarta),
   responder:(i, k, v) => G.carta && G.carta.elegida === undefined && esMio(G.turno) && accion(() => { G.carta.elegida = +v; }),
   pagarDeuda:() => accion(pagarDeuda),
-  quiebra:() => accion(quiebra),
+  quiebra:() => G.fase === 'deuda' && accion(quiebra),
+  juntar:() => { UI.ventana = {t:'juntar'}; pintarVentana(true); },
+  preguntarQuiebra:() => { UI.confirmaQuiebra = G.deuda && G.deuda.n; pintarMesa(); },
+  noQuiebra:() => { UI.confirmaQuiebra = null; pintarMesa(); },
   ejercicio:i => puedeGestionar() && accion(() => hacerEjercicio(i)),
   quitarEjercicio:i => puedeGestionar() && accion(() => quitarEjercicio(i)),
   hipoteca:i => puedeGestionar() && accion(() => hipotecar(i)),
-  recuperar:i => puedeGestionar() && accion(() => recuperar(i)),
+  recuperar:i => puedeGestionar() && G.fase !== 'deuda' && accion(() => recuperar(i)),
   verJugador:(i, k) => { UI.ver = k === G.turno ? null : k; pintarPanel(); },
   negociar:() => { UI.ventana = {t:'trato', para:G.jugadores.findIndex((p, k) => k !== G.turno && !p.fuera), doy:[], recibo:[], dineroDoy:0, dineroRecibo:0, cartasDoy:0, cartasRecibo:0}; pintarVentana(true); },
   tratoCon:(i, k) => { Object.assign(UI.ventana, {para:k, recibo:[], dineroRecibo:0, cartasRecibo:0, aviso:''}); pintarVentana(true); },
